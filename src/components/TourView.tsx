@@ -308,7 +308,8 @@ export const TourView: React.FC<TourViewProps> = ({ onBackToMap }) => {
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 1.05 }}
       transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
-      className="fixed inset-0 bg-zinc-950 z-30 flex flex-col justify-between overflow-hidden select-none font-sans"
+      // top-20 (80px) = Global Header ki height. Header z-[100] hai, ye z-30 pe hai, to header hamesha upar rahega.
+      className="fixed inset-x-0 bottom-0 top-20 bg-zinc-950 z-30 flex flex-col justify-between overflow-hidden select-none font-sans"
     >
       <style>{`
         @keyframes cloudDrift {
@@ -329,7 +330,7 @@ export const TourView: React.FC<TourViewProps> = ({ onBackToMap }) => {
         }
       `}</style>
 
-      {/* Full Screen Viewport with Drag & Zoom */}
+      {/* Full Viewport (header ke neeche) with Drag & Zoom */}
       <div
         ref={containerRef}
         onPointerDown={handlePointerDown}
@@ -348,9 +349,9 @@ export const TourView: React.FC<TourViewProps> = ({ onBackToMap }) => {
             transformOrigin: 'center center',
             transition: isDragging ? 'none' : 'transform 0.15s ease-out',
             willChange: 'transform',
-            filter: 
-              weatherMode === 'sunset' 
-                ? 'sepia(0.3) brightness(0.85) hue-rotate(-15deg)' 
+            filter:
+              weatherMode === 'sunset'
+                ? 'sepia(0.3) brightness(0.85) hue-rotate(-15deg)'
                 : weatherMode === 'rainy'
                 ? 'grayscale(0.35) brightness(0.65) contrast(1.2)'
                 : 'none',
@@ -484,8 +485,8 @@ export const TourView: React.FC<TourViewProps> = ({ onBackToMap }) => {
         <div className="absolute inset-0 pointer-events-none z-20 bg-[radial-gradient(ellipse_at_center,transparent_50%,rgba(0,0,0,0.4)_100%)]" />
       </div>
 
-      {/* Top Floating Controls */}
-      <div className="relative z-30 pt-20 px-6 flex items-center justify-between pointer-events-none">
+      {/* Top Floating Controls (pt-20 hata diya kyunke container ab header ke neeche se start hota hai) */}
+      <div className="relative z-30 pt-6 px-6 flex items-center justify-between pointer-events-none">
         <button
           onClick={onBackToMap}
           className="pointer-events-auto flex items-center space-x-2 px-4 py-2.5 bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-700/80 rounded-xl text-white text-xs font-semibold backdrop-blur-md shadow-2xl transition-all cursor-pointer"
@@ -604,10 +605,10 @@ export const TourView: React.FC<TourViewProps> = ({ onBackToMap }) => {
         )}
       </AnimatePresence>
 
-      {/* Floor Plan Modal */}
+      {/* Floor Plan Modal (absolute inset-0: sirf tour area ke andar, header ke neeche) */}
       <AnimatePresence>
         {showFloorPlan && selectedZone && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/80 backdrop-blur-md">
+          <div className="absolute inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/80 backdrop-blur-md">
             <motion.div
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
