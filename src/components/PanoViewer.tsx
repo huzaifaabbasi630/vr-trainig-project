@@ -1329,6 +1329,25 @@ const GROUND = 196;
 
 
 
+const drawRoundedRect = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  radius: number,
+) => {
+  const roundRect = Reflect.get(ctx, 'roundRect') as
+    | ((x: number, y: number, width: number, height: number, radius: number) => void)
+    | undefined;
+
+  if (roundRect) {
+    roundRect.call(ctx, x, y, width, height, radius);
+  } else {
+    ctx.rect(x, y, width, height);
+  }
+};
+
 const drawWalker = (ctx: CanvasRenderingContext2D, look: Look, phase: number, night: boolean) => {
 
   ctx.setTransform(2, 0, 0, 2, 0, 0); // 100 x 200 logical units
@@ -1485,11 +1504,7 @@ const drawWalker = (ctx: CanvasRenderingContext2D, look: Look, phase: number, ni
 
     ctx.beginPath();
 
-    ctx.roundRect
-
-      ? (ctx as any).roundRect(sx - 20 * b, sy + 2, 14 * b, 30, 5)
-
-      : ctx.rect(sx - 20 * b, sy + 2, 14 * b, 30);
+    drawRoundedRect(ctx, sx - 20 * b, sy + 2, 14 * b, 30, 5);
 
     ctx.fill();
 
@@ -1593,11 +1608,7 @@ const drawWalker = (ctx: CanvasRenderingContext2D, look: Look, phase: number, ni
 
     ctx.beginPath();
 
-    ctx.roundRect
-
-      ? (ctx as any).roundRect(armNear.hx - 6, armNear.hy + 1, 13, 15, 2)
-
-      : ctx.rect(armNear.hx - 6, armNear.hy + 1, 13, 15);
+    drawRoundedRect(ctx, armNear.hx - 6, armNear.hy + 1, 13, 15, 2);
 
     ctx.fill();
 

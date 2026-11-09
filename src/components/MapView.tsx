@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MapPin, ZoomIn, ZoomOut, RotateCcw, Compass, X, ArrowRight, Building, Globe } from 'lucide-react';
-import topViewImg from '../assets/1-TOP-VIEW.JPEG';
+import topViewImg from '../assets/1-TOP-VIEW.jpeg';
 import planeImg from '../assets/image-removebg-preview.png';
 
 interface MapViewProps {

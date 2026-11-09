@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, ZoomIn, ZoomOut, RotateCcw, X, Building, Home, Utensils, Bed, Bath, Sun, CloudRain, Sunset, Volume2, VolumeX, Layout, CheckCircle2, AlertCircle } from 'lucide-react';
+import { ArrowLeft, ZoomIn, ZoomOut, RotateCcw, X, Building, Home, Utensils, Bed, Sun, CloudRain, Sunset, Volume2, VolumeX, Layout, CheckCircle2, AlertCircle } from 'lucide-react';
 import perspectiveImg from '../assets/2-PERSPECTIVE.jpeg';
 import streetPanoImg from '../assets/PVS/3- Street View 1.jpeg'; // Aapki 360 panoramic image
 import { PanoViewer } from './PanoViewer';

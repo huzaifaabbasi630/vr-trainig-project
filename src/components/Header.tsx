@@ -6,7 +6,7 @@ interface HeaderProps {
   onGoHome?: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ currentView, onGoHome }) => {
+export const Header: React.FC<HeaderProps> = ({ onGoHome }) => {
   return (
     <header className="fixed top-0 left-0 w-full z-50 flex items-center justify-between px-8 py-4 bg-zinc-950/40 backdrop-blur-xl border-b border-white/10 text-zinc-100 shadow-2xl">
       {/* Left side: Navigation / Title */}
