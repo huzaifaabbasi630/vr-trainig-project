@@ -87,20 +87,46 @@ interface FxConfig {
 
 
 interface SceneDef {
-
   id: string;
-
   title: string;
-
   file: string;
+  src?: string;
+  fallbackSrc?: string;
 
   interior?: boolean; // interior scenes mein night effect nahi lagta
 
   hotSpots?: HotSpotDef[];
 
   fx?: FxConfig;
-
 }
+
+interface PannellumViewerInstance {
+  on(event: 'load', callback: () => void): void;
+  on(event: 'error', callback: (error: unknown) => void): void;
+  destroy(): void;
+  getYaw(): number;
+  getPitch(): number;
+  getHfov(): number;
+  mouseEventToCoords(event: MouseEvent): number[];
+}
+
+interface PannellumApi {
+  viewer(container: HTMLDivElement, config: Record<string, unknown>): PannellumViewerInstance;
+}
+
+interface PannellumMultiResConfig {
+  basePath?: string;
+  path: string;
+  fallbackPath?: string;
+  extension: string;
+  tileResolution: number;
+  maxLevel: number;
+  cubeResolution: number;
+}
+
+type LoadedPanorama =
+  | { type: 'equirectangular'; src: string }
+  | { type: 'multires'; multiRes: PannellumMultiResConfig };
 
 
 
@@ -179,8 +205,29 @@ interface Person {
 
 
 const BRAND = '#00A870';
-
 const DEBUG_COORDS = false;
+const MULTIRES_SCENE_IDS = new Set([
+  'street1',
+  'street2',
+  'street3',
+  'foyer',
+  'living',
+  'kitchen',
+]);
+const SCENE_THUMBNAILS: Record<string, string> = {
+  street1: `${import.meta.env.BASE_URL}pano-thumbnails/street1.jpg`,
+  street2: `${import.meta.env.BASE_URL}pano-thumbnails/street2.jpg`,
+  street3: `${import.meta.env.BASE_URL}pano-thumbnails/street3.jpg`,
+  foyer: `${import.meta.env.BASE_URL}pano-thumbnails/foyer.jpg`,
+  drawing: `${import.meta.env.BASE_URL}pano-thumbnails/drawing.jpg`,
+  bedroom1: `${import.meta.env.BASE_URL}pano-thumbnails/bedroom1.jpg`,
+  bedroom2: `${import.meta.env.BASE_URL}pano-thumbnails/bedroom2.jpg`,
+  bathroom1: `${import.meta.env.BASE_URL}pano-thumbnails/bathroom1.jpg`,
+  bathroom2: `${import.meta.env.BASE_URL}pano-thumbnails/bathroom2.jpg`,
+  living: `${import.meta.env.BASE_URL}pano-thumbnails/living.jpg`,
+  dining: `${import.meta.env.BASE_URL}pano-thumbnails/dining.jpg`,
+  kitchen: `${import.meta.env.BASE_URL}pano-thumbnails/kitchen.jpg`,
+};
 
 
 
@@ -236,6 +283,13 @@ const scaFiles = import.meta.glob('../assets/SCA/*.{jpg,jpeg,JPG,JPEG,png,PNG,we
 
 }) as Record<string, string>;
 
+/* Street 1 image: src/assets/PVS/ */
+const pvsFiles = import.meta.glob('../assets/PVS/*.{jpg,jpeg,JPG,JPEG,png,PNG,webp}', {
+  eager: true,
+  query: '?url',
+  import: 'default',
+}) as Record<string, string>;
+
 
 
 /* Foyer image: src/assets/room/ */
@@ -258,96 +312,50 @@ const roomFiles = import.meta.glob(
 
 
 
-/* File names ko spaces / hyphens / underscores se independent match karna. */
+type ImagePair = { src: string; fallbackSrc?: string };
+
 const normalizeFileName = (fileName: string) =>
-  fileName.toLowerCase().replace(/[\s_-]/g, '');
+  fileName.replace(/\.[^.]+$/, '').toLowerCase().replace(/[\s_-]/g, '');
 
-/* Street 2: src/assets/AFB/4-Street View 2.jpeg */
-const street2Image = Object.entries(afbFiles).find(([path]) => {
-  const fileName = path.split('/').pop() ?? '';
-  return normalizeFileName(fileName) === normalizeFileName('4-Street View 2.jpeg');
-})?.[1];
+const findImagePair = (
+  files: Record<string, string>,
+  fileName: string,
+  partialMatch = false,
+): ImagePair | undefined => {
+  const wantedName = normalizeFileName(fileName);
+  const matches = Object.entries(files).filter(([path]) => {
+    const candidateName = normalizeFileName(path.split('/').pop() ?? '');
+    return partialMatch ? candidateName.includes(wantedName) : candidateName === wantedName;
+  });
+  const webp = matches.find(([path]) => path.toLowerCase().endsWith('.webp'));
+  const jpeg = matches.find(([path]) => /\.(jpe?g)$/i.test(path));
+  const preferred = webp ?? jpeg ?? matches[0];
 
-/* Street 3: src/assets/SCA/5-Street View 3.jpeg */
-const street3Image = Object.entries(scaFiles).find(([path]) => {
-  const fileName = path.split('/').pop() ?? '';
-  return normalizeFileName(fileName) === normalizeFileName('5-Street View 3.jpeg');
-})?.[1];
+  if (!preferred) return undefined;
+  return {
+    src: preferred[1],
+    fallbackSrc: webp && jpeg ? jpeg[1] : undefined,
+  };
+};
 
-
-
-/* Foyer ka image: pehle exact '6-foyer.jpeg', warna koi bhi file jiske naam mein 'foyer' ho */
-
-const foyerImage =
-
-  Object.entries(roomFiles).find(
-
-    ([path]) => path.split('/').pop()?.toLowerCase() === '6-foyer.jpeg'
-
-  )?.[1] ??
-
-  Object.entries(roomFiles).find(([path]) =>
-
-    path.split('/').pop()?.toLowerCase().includes('foyer')
-
-  )?.[1];
-
-/* Drawing Room image: src/assets/room/10-drawing.jpeg */
-const drawingImage =
-  Object.entries(roomFiles).find(([path]) => {
-    const fileName = path.split('/').pop() ?? '';
-    return normalizeFileName(fileName) === normalizeFileName('10-drawing.jpeg');
-  })?.[1] ??
-  Object.entries(roomFiles).find(([path]) =>
-    (path.split('/').pop() ?? '').toLowerCase().includes('drawing')
-  )?.[1];
-
-/* Bedroom images: src/assets/room/11-bed.jpeg and 12-bed.jpeg */
-const bedroom1Image = Object.entries(roomFiles).find(([path]) => {
-  const fileName = normalizeFileName(path.split('/').pop() ?? '');
-  return fileName === normalizeFileName('11-bed.jpeg');
-})?.[1];
-
-const bedroom2Image = Object.entries(roomFiles).find(([path]) => {
-  const fileName = normalizeFileName(path.split('/').pop() ?? '');
-  return fileName === normalizeFileName('13-bed.jpeg');
-})?.[1];
-
-const bathroom1Image = Object.entries(roomFiles).find(([path]) => {
-  const fileName = normalizeFileName(path.split('/').pop() ?? '');
-  return fileName === normalizeFileName('12-bath.jpeg');
-})?.[1];
-
-const bathroom2Image = Object.entries(roomFiles).find(([path]) => {
-  const fileName = normalizeFileName(path.split('/').pop() ?? '');
-  return fileName === normalizeFileName('14-bath.jpeg');
-})?.[1];
-
-/* Living Room image: src/assets/room/7-living.jpeg */
-const livingImage = Object.entries(roomFiles).find(
-  ([path]) => path.split('/').pop()?.toLowerCase() === '7-living.jpeg'
-)?.[1];
-
-/* Dining image: src/assets/room/8-dining.jpeg.
-   If the file has a slightly different name, find dining/dinning automatically. */
-const diningImage =
-  Object.entries(roomFiles).find(
-    ([path]) => path.split('/').pop()?.toLowerCase() === '8-dining.jpeg'
-  )?.[1] ??
-  Object.entries(roomFiles).find(([path]) => {
-    const fileName = path.split('/').pop()?.toLowerCase() ?? '';
-    return fileName.includes('dining') || fileName.includes('dinning');
-  })?.[1];
-
-/* Kitchen image: src/assets/room/9-kitchen.jpeg.
-   Also supports other filenames containing 'kitchen'. */
-const kitchenImage =
-  Object.entries(roomFiles).find(
-    ([path]) => path.split('/').pop()?.toLowerCase() === '9-kitchen.jpeg'
-  )?.[1] ??
-  Object.entries(roomFiles).find(([path]) =>
-    path.split('/').pop()?.toLowerCase().includes('kitchen')
-  )?.[1];
+const street1ImagePair = findImagePair(pvsFiles, '3- Street View 1.jpeg');
+const street2ImagePair = findImagePair(afbFiles, '4- Street View 2.jpeg');
+const street3ImagePair = findImagePair(scaFiles, '5- Street View 3.jpeg');
+const foyerImagePair =
+  findImagePair(roomFiles, '6-foyer.jpeg') ?? findImagePair(roomFiles, 'foyer', true);
+const drawingImagePair =
+  findImagePair(roomFiles, '10-drawing.jpeg') ?? findImagePair(roomFiles, 'drawing', true);
+const bedroom1ImagePair = findImagePair(roomFiles, '11-bed.jpeg');
+const bedroom2ImagePair = findImagePair(roomFiles, '13-bed.jpeg');
+const bathroom1ImagePair = findImagePair(roomFiles, '12-bath.jpeg');
+const bathroom2ImagePair = findImagePair(roomFiles, '14-bath.jpeg');
+const livingImagePair = findImagePair(roomFiles, '7-living.jpeg');
+const diningImagePair =
+  findImagePair(roomFiles, '8-dining.jpeg') ??
+  findImagePair(roomFiles, 'dining', true) ??
+  findImagePair(roomFiles, 'dinning', true);
+const kitchenImagePair =
+  findImagePair(roomFiles, '9-kitchen.jpeg') ?? findImagePair(roomFiles, 'kitchen', true);
 
 
 
@@ -369,20 +377,154 @@ const peopleFiles = Object.values(
 
 
 
-const findImage = (name: string): string | undefined => {
+const findImage = (name: string): ImagePair | undefined => findImagePair(panoFiles, name);
 
-  const key = Object.keys(panoFiles).find((k) => {
+const imageLoadCache = new Map<string, Promise<void>>();
+const preloadedImages = new Map<string, HTMLImageElement>();
+const resolvedImageCache = new Map<string, string>();
+const multiResConfigCache = new Map<string, Promise<PannellumMultiResConfig | null>>();
 
-    const base = k.split('/').pop()!.replace(/\.[^.]+$/, '').toLowerCase();
+const preloadImage = (src: string, priority: 'high' | 'low' = 'high'): Promise<void> => {
+  const cached = imageLoadCache.get(src);
+  if (cached) return cached;
 
-    return base === name.toLowerCase();
+  const promise = new Promise<void>((resolve, reject) => {
+    const image = new Image();
+    image.fetchPriority = priority;
+    image.onload = () => {
+      preloadedImages.set(src, image);
+      resolve();
+    };
+    image.onerror = () => reject(new Error(`Unable to load panorama image: ${src}`));
+    image.src = src;
 
+    if (image.complete) {
+      if (image.naturalWidth > 0) {
+        preloadedImages.set(src, image);
+        resolve();
+      }
+      else reject(new Error(`Unable to decode panorama image: ${src}`));
+    }
   });
 
+  imageLoadCache.set(src, promise);
+  void promise.catch(() => {
+    if (imageLoadCache.get(src) === promise) imageLoadCache.delete(src);
+  });
+  return promise;
+};
 
+const loadImageWithFallback = async (
+  primarySrc: string,
+  fallbackSrc?: string,
+  priority: 'high' | 'low' = 'high',
+): Promise<string> => {
+  const cachedSrc = resolvedImageCache.get(primarySrc);
+  if (cachedSrc) return cachedSrc;
 
-  return key ? panoFiles[key] : undefined;
+  try {
+    await preloadImage(primarySrc, priority);
+    resolvedImageCache.set(primarySrc, primarySrc);
+    return primarySrc;
+  } catch (primaryError) {
+    if (!fallbackSrc || fallbackSrc === primarySrc) throw primaryError;
 
+    console.warn('[PanoViewer] WebP panorama failed; trying the JPEG fallback.', primaryError);
+    await preloadImage(fallbackSrc, priority);
+    resolvedImageCache.set(primarySrc, fallbackSrc);
+    return fallbackSrc;
+  }
+};
+
+const getMultiResConfig = (sceneId: string): Promise<PannellumMultiResConfig | null> => {
+  const cached = multiResConfigCache.get(sceneId);
+  if (cached) return cached;
+
+  const configUrl = `${import.meta.env.BASE_URL}pano-tiles/${sceneId}/config.json`;
+  const request = fetch(configUrl)
+    .then(async (response) => {
+      if (response.status === 404) return null;
+      if (!response.ok) {
+        throw new Error(`Unable to load multi-resolution config (${response.status}): ${configUrl}`);
+      }
+      if (!response.headers.get('content-type')?.includes('json')) return null;
+
+      const config: unknown = await response.json();
+      if (typeof config !== 'object' || config === null || !('multiRes' in config)) {
+        throw new Error(`Invalid multi-resolution config: ${configUrl}`);
+      }
+
+      const multiRes = config.multiRes;
+      if (
+        typeof multiRes !== 'object' ||
+        multiRes === null ||
+        !('path' in multiRes) ||
+        typeof multiRes.path !== 'string' ||
+        !('extension' in multiRes) ||
+        typeof multiRes.extension !== 'string' ||
+        !('tileResolution' in multiRes) ||
+        typeof multiRes.tileResolution !== 'number' ||
+        !Number.isFinite(multiRes.tileResolution) ||
+        multiRes.tileResolution <= 0 ||
+        !('maxLevel' in multiRes) ||
+        typeof multiRes.maxLevel !== 'number' ||
+        !Number.isFinite(multiRes.maxLevel) ||
+        multiRes.maxLevel < 1 ||
+        !('cubeResolution' in multiRes) ||
+        typeof multiRes.cubeResolution !== 'number' ||
+        !Number.isFinite(multiRes.cubeResolution) ||
+        multiRes.cubeResolution <= 0
+      ) {
+        throw new Error(`Invalid multi-resolution settings: ${configUrl}`);
+      }
+
+      return {
+        path: multiRes.path.replace(/^\/+/, ''),
+        fallbackPath:
+          'fallbackPath' in multiRes && typeof multiRes.fallbackPath === 'string'
+            ? multiRes.fallbackPath.replace(/^\/+/, '')
+            : undefined,
+        extension: multiRes.extension,
+        tileResolution: multiRes.tileResolution,
+        maxLevel: multiRes.maxLevel,
+        cubeResolution: multiRes.cubeResolution,
+      };
+    })
+    .catch((error: unknown) => {
+      multiResConfigCache.delete(sceneId);
+      throw error;
+    });
+
+  multiResConfigCache.set(sceneId, request);
+  return request;
+};
+
+const loadScenePanorama = async (
+  scene: SceneDef,
+  displaySrc: string,
+  useMultiRes: boolean,
+): Promise<LoadedPanorama> => {
+  if (useMultiRes) {
+    try {
+      const generatedConfig = await getMultiResConfig(scene.id);
+      if (generatedConfig) {
+        return {
+          type: 'multires',
+          multiRes: {
+            ...generatedConfig,
+            basePath: `${import.meta.env.BASE_URL}pano-tiles/${scene.id}/`,
+          },
+        };
+      }
+    } catch (error) {
+      console.warn(`[PanoViewer] Multi-resolution tiles unavailable for ${scene.title}; using the panorama image.`, error);
+    }
+  }
+
+  return {
+    type: 'equirectangular',
+    src: await loadImageWithFallback(displaySrc, scene.fallbackSrc),
+  };
 };
 
 
@@ -689,8 +831,22 @@ const SCENES: SceneDef[] = [
 
 
 
-/* =====================================================================
+const SCENE_IMAGE_PAIRS: Record<string, ImagePair | undefined> = {
+  street1: street1ImagePair,
+  street2: street2ImagePair,
+  street3: street3ImagePair,
+  foyer: foyerImagePair,
+  drawing: drawingImagePair,
+  bedroom1: bedroom1ImagePair,
+  bedroom2: bedroom2ImagePair,
+  bathroom1: bathroom1ImagePair,
+  bathroom2: bathroom2ImagePair,
+  living: livingImagePair,
+  dining: diningImagePair,
+  kitchen: kitchenImagePair,
+};
 
+/* =====================================================================
    NIGHT: panorama ko process karke "raat" wali image banata hai
 
    ===================================================================== */
@@ -1750,7 +1906,7 @@ export const PanoViewer: React.FC<PanoViewerProps> = ({
 
   const fxRef = useRef<HTMLDivElement>(null);
 
-  const viewerRef = useRef<any>(null);
+  const viewerRef = useRef<PannellumViewerInstance | null>(null);
 
   const lastView = useRef<{ yaw: number; hfov: number } | null>(null);
 
@@ -1771,6 +1927,10 @@ export const PanoViewer: React.FC<PanoViewerProps> = ({
   const nightRef = useRef<Record<string, string>>({});
 
   const [coords, setCoords] = useState<string>('');
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadedPanorama, setLoadedPanorama] = useState<LoadedPanorama | null>(null);
+  const [retryToken, setRetryToken] = useState<number>(0);
 
 
 
@@ -1778,43 +1938,14 @@ export const PanoViewer: React.FC<PanoViewerProps> = ({
 
     () =>
 
-      SCENES.map((s) => ({
-
-        ...s,
-
-        src:
-
-          s.id === 'street2'
-
-            ? street2Image ?? findImage(s.file)
-
-            : s.id === 'street3'
-
-            ? street3Image ?? findImage(s.file)
-
-            : s.id === 'foyer'
-
-            ? foyerImage ?? findImage(s.file)
-
-            : s.id === 'drawing'
-            ? drawingImage ?? findImage(s.file)
-            : s.id === 'bedroom1'
-            ? bedroom1Image ?? findImage(s.file)
-            : s.id === 'bedroom2'
-            ? bedroom2Image ?? findImage(s.file)
-            : s.id === 'bathroom1'
-            ? bathroom1Image ?? findImage(s.file)
-            : s.id === 'bathroom2'
-            ? bathroom2Image ?? findImage(s.file)
-            : s.id === 'living'
-            ? livingImage ?? findImage(s.file)
-            : s.id === 'dining'
-            ? diningImage ?? findImage(s.file)
-            : s.id === 'kitchen'
-            ? kitchenImage ?? findImage(s.file)
-            : findImage(s.file) ?? (s.id === 'street1' ? imageSrc : undefined),
-
-      })),
+      SCENES.map((s) => {
+        const pair = SCENE_IMAGE_PAIRS[s.id] ?? findImage(s.file);
+        return {
+          ...s,
+          src: pair?.src ?? (s.id === 'street1' ? imageSrc : undefined),
+          fallbackSrc: pair?.fallbackSrc,
+        };
+      }),
 
     [imageSrc]
 
@@ -1833,6 +1964,16 @@ export const PanoViewer: React.FC<PanoViewerProps> = ({
   // Night image tayyar hone tak day image dikhti rehti hai
 
   const displaySrc = useNight ? nightSrcs[active.id] ?? active.src : active.src;
+  useEffect(() => {
+    MULTIRES_SCENE_IDS.forEach((id) => {
+      const scene = scenes.find((candidate) => candidate.id === id);
+      if (!scene) return;
+
+      void getMultiResConfig(scene.id).catch((error: unknown) => {
+        console.warn(`[PanoViewer] Multi-resolution metadata preload failed for ${scene.title}.`, error);
+      });
+    });
+  }, [scenes]);
 
 
 
@@ -1867,22 +2008,49 @@ export const PanoViewer: React.FC<PanoViewerProps> = ({
     const target = scenes.find((s) => s.id === targetId);
 
     if (!target?.src) {
-
       // image nahi mili: history galat push na ho
-
       if (id !== '__back') historyRef.current.pop();
-
       return;
-
     }
+    if (targetId === activeRef.current) return;
 
     lastView.current = null;
-
     activeRef.current = targetId;
-
+    setIsLoading(true);
+    setLoadError(null);
+    setLoadedPanorama(null);
     setActiveId(targetId);
-
   };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!displaySrc) {
+      void Promise.resolve().then(() => {
+        if (cancelled) return;
+        setIsLoading(false);
+        setLoadError('No panorama image is available for this scene.');
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    void loadScenePanorama(active, displaySrc, !useNight)
+      .then((panorama) => {
+        if (!cancelled) setLoadedPanorama(panorama);
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        console.error(`[PanoViewer] Unable to load ${active.title}.`, error);
+        setIsLoading(false);
+        setLoadError('We could not load this 360° scene. Check your connection and try again.');
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [active.id, active.fallbackSrc, active.title, displaySrc, retryToken, useNight]);
 
 
 
@@ -1916,7 +2084,11 @@ export const PanoViewer: React.FC<PanoViewerProps> = ({
 
         })
 
-        .catch((e) => console.error('[PanoViewer] night build failed', e))
+        .catch((e) => {
+          if (cancelled) return;
+          console.error('[PanoViewer] night build failed', e);
+          setIsLoading(false);
+        })
 
         .finally(() => {
 
@@ -1959,32 +2131,54 @@ export const PanoViewer: React.FC<PanoViewerProps> = ({
   /* ---------- Pannellum viewer ---------- */
 
   useEffect(() => {
-
-    const w = window as any;
-
-    if (!w.pannellum || !panoRef.current || !displaySrc) return;
-
-
-
-    if (viewerRef.current) {
-
-      try {
-
-        viewerRef.current.destroy();
-
-      } catch {
-
-        /* ignore */
-
+    const pannellum = (window as Window & { pannellum?: PannellumApi }).pannellum;
+    const container = panoRef.current;
+    if (!loadedPanorama || !container) return;
+    let errorTimer: number | undefined;
+    let cancelled = false;
+    let fallbackStarted = false;
+    let currentViewer: PannellumViewerInstance | null = null;
+    const showLoadError = (message: string) => {
+      errorTimer = window.setTimeout(() => {
+        setIsLoading(false);
+        setLoadError(message);
+      }, 0);
+    };
+    const fallBackToSingleImage = (error: unknown) => {
+      if (loadedPanorama.type !== 'multires' || fallbackStarted) return;
+      fallbackStarted = true;
+      console.warn('[PanoViewer] Multi-resolution tiles failed; switching to the panorama image.', error);
+      setIsLoading(true);
+      const fallbackImage = displaySrc ?? active.src;
+      if (!fallbackImage) {
+        setIsLoading(false);
+        setLoadError('No panorama image is available for this scene.');
+        return;
       }
 
-      viewerRef.current = null;
+      void loadImageWithFallback(fallbackImage, active.fallbackSrc)
+        .then((src) => {
+          if (!cancelled && (!currentViewer || viewerRef.current === currentViewer)) {
+            setLoadedPanorama({ type: 'equirectangular', src });
+          }
+        })
+        .catch((fallbackError: unknown) => {
+          if (cancelled || (currentViewer && viewerRef.current !== currentViewer)) return;
+          console.error(`[PanoViewer] Single-image fallback failed for ${active.title}.`, fallbackError);
+          setIsLoading(false);
+          setLoadError('We could not display this 360° scene. Please try again.');
+        });
+    };
 
+    if (!pannellum) {
+      showLoadError('The 360° viewer could not be initialized. Please reload the tour.');
+      return () => {
+        cancelled = true;
+        if (errorTimer !== undefined) window.clearTimeout(errorTimer);
+      };
     }
 
-    panoRef.current.innerHTML = '';
-
-
+    container.innerHTML = '';
 
     const hotSpots = (active.hotSpots ?? []).map((h) => ({
 
@@ -2017,38 +2211,55 @@ export const PanoViewer: React.FC<PanoViewerProps> = ({
       },
 
       clickHandlerFunc: () => goTo(h.target),
-
     }));
 
+    let viewer: PannellumViewerInstance;
+    try {
+      viewer = pannellum.viewer(container, {
+        type: loadedPanorama.type,
+        ...(loadedPanorama.type === 'multires'
+          ? { multiRes: loadedPanorama.multiRes }
+          : { panorama: loadedPanorama.src }),
+        autoLoad: true,
+        compass: true,
+        showFullscreenCtrl: true,
+        hfov: lastView.current?.hfov ?? 110,
+        yaw: lastView.current?.yaw ?? 0,
+        minHfov: 50,
+        maxHfov: 120,
+        hotSpots,
+      });
+    } catch (error) {
+      console.error('[PanoViewer] Failed to initialize the panorama viewer.', error);
+      if (loadedPanorama.type === 'multires') {
+        fallBackToSingleImage(error);
+      } else {
+        showLoadError('The 360° scene could not be displayed. Please try again.');
+      }
+      return () => {
+        cancelled = true;
+        if (errorTimer !== undefined) window.clearTimeout(errorTimer);
+      };
+    }
 
-
-    const viewer = w.pannellum.viewer(panoRef.current, {
-
-      type: 'equirectangular',
-
-      panorama: displaySrc,
-
-      autoLoad: true,
-
-      compass: true,
-
-      showFullscreenCtrl: true,
-
-      hfov: lastView.current?.hfov ?? 110,
-
-      yaw: lastView.current?.yaw ?? 0,
-
-      minHfov: 50,
-
-      maxHfov: 120,
-
-      hotSpots,
-
-    });
-
+    currentViewer = viewer;
     viewerRef.current = viewer;
+    viewer.on('load', () => {
+      if (viewerRef.current !== viewer) return;
+      setIsLoading(false);
+      setLoadError(null);
+    });
+    viewer.on('error', (error: unknown) => {
+      if (viewerRef.current !== viewer) return;
+      if (loadedPanorama.type === 'multires') {
+        fallBackToSingleImage(error);
+        return;
+      }
 
-
+      console.error(`[PanoViewer] Failed to render ${active.title}.`, error);
+      setIsLoading(false);
+      setLoadError('We could not display this 360° scene. Please try again.');
+    });
 
     const onShiftClick = (e: MouseEvent) => {
 
@@ -2064,45 +2275,30 @@ export const PanoViewer: React.FC<PanoViewerProps> = ({
 
     };
 
-    const el = panoRef.current;
-
+    const el = container;
     el.addEventListener('click', onShiftClick);
 
-
-
     return () => {
-
+      cancelled = true;
+      if (errorTimer !== undefined) window.clearTimeout(errorTimer);
       el.removeEventListener('click', onShiftClick);
-
       if (viewerRef.current) {
-
         try {
-
           lastView.current = {
-
             yaw: viewerRef.current.getYaw(),
-
             hfov: viewerRef.current.getHfov(),
-
           };
-
           viewerRef.current.destroy();
-
         } catch {
-
           /* ignore */
-
         }
-
         viewerRef.current = null;
-
       }
-
     };
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
 
-  }, [activeId, displaySrc, scenes]);
+  }, [activeId, loadedPanorama, scenes]);
 
 
 
@@ -2556,6 +2752,48 @@ export const PanoViewer: React.FC<PanoViewerProps> = ({
 
       <div ref={panoRef} className="absolute inset-0 w-full h-full" />
 
+      <div
+        role={loadError ? 'alert' : 'status'}
+        aria-live="polite"
+        aria-busy={isLoading}
+        aria-hidden={!isLoading && !loadError}
+        className={`absolute inset-0 z-[90] flex items-center justify-center bg-zinc-950/75 px-6 text-center backdrop-blur-md transition-opacity duration-500 ${
+          isLoading || loadError ? 'opacity-100' : 'pointer-events-none opacity-0'
+        }`}
+        style={{ pointerEvents: isLoading || loadError ? 'auto' : 'none' }}
+      >
+        {loadError ? (
+          <div className="max-w-md rounded-2xl border border-white/10 bg-zinc-900/90 p-8 shadow-2xl">
+            <p className="text-lg font-semibold text-white">360° Environment Unavailable</p>
+            <p className="mt-2 text-sm leading-relaxed text-zinc-300">{loadError}</p>
+            <button
+              type="button"
+              onClick={() => {
+                setIsLoading(true);
+                setLoadError(null);
+                setLoadedPanorama(null);
+                setRetryToken((token) => token + 1);
+              }}
+              className="mt-6 rounded-lg px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:brightness-110"
+              style={{ background: BRAND }}
+            >
+              Retry
+            </button>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center">
+            <span
+              aria-hidden="true"
+              className="h-12 w-12 animate-spin rounded-full border-4 border-white/20 border-t-emerald-400"
+            />
+            <p className="mt-5 text-sm font-semibold tracking-wide text-white">
+              Loading 360° Environment...
+            </p>
+            <p className="mt-2 text-xs text-zinc-400">Preparing your immersive tour</p>
+          </div>
+        )}
+      </div>
+
 
 
       {/* Screen-space vignette (night mein halka sa) */}
@@ -2633,8 +2871,13 @@ export const PanoViewer: React.FC<PanoViewerProps> = ({
       >
 
         <button
-
-          onClick={() => setNight(false)}
+          onClick={() => {
+            if (night && !active.interior) {
+              setIsLoading(true);
+              setLoadError(null);
+            }
+            setNight(false);
+          }}
 
           style={!night ? { background: BRAND } : undefined}
 
@@ -2653,8 +2896,13 @@ export const PanoViewer: React.FC<PanoViewerProps> = ({
         </button>
 
         <button
-
-          onClick={() => setNight(true)}
+          onClick={() => {
+            if (!night && !active.interior) {
+              setIsLoading(true);
+              setLoadError(null);
+            }
+            setNight(true);
+          }}
 
           style={night ? { background: BRAND } : undefined}
 
@@ -2743,11 +2991,8 @@ export const PanoViewer: React.FC<PanoViewerProps> = ({
                 key={s.id}
 
                 onClick={() => goTo(s.id)}
-
                 disabled={!available}
-
-                title={available ? s.title : `${s.title} (image missing)`}
-
+                aria-label={`Open ${s.title}`}
                 style={isActive ? { borderColor: BRAND } : undefined}
 
                 className={`relative shrink-0 w-28 h-16 rounded-lg overflow-hidden border-2 transition-all ${
@@ -2759,24 +3004,22 @@ export const PanoViewer: React.FC<PanoViewerProps> = ({
               >
 
                 {available ? (
-
-                  <img src={s.src} alt={s.title} draggable={false} className="w-full h-full object-cover" />
-
+                  <img
+                    src={SCENE_THUMBNAILS[s.id]}
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    draggable={false}
+                    onError={(event) => {
+                      event.currentTarget.style.visibility = 'hidden';
+                    }}
+                    className="h-full w-full bg-zinc-900 object-cover"
+                  />
                 ) : (
-
-                  <div className="w-full h-full bg-zinc-800 flex items-center justify-center text-[10px] text-zinc-400">
-
+                  <span className="flex h-full w-full items-center justify-center bg-zinc-900 text-[10px] text-zinc-400">
                     Soon
-
-                  </div>
-
+                  </span>
                 )}
-
-                <span className="absolute inset-x-0 bottom-0 bg-black/65 text-[9px] font-semibold text-white py-0.5 truncate px-1 text-center">
-
-                  {s.title}
-
-                </span>
 
               </button>
 
