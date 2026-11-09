@@ -1,5 +1,5 @@
 import React from 'react';
-import logoImg from '../assets/LOGO.JPG';
+import logoImg from '../assets/logo.jpg';
 
 interface HeaderProps {
   currentView: 'landing' | 'map' | 'tour';
