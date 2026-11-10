@@ -1681,25 +1681,27 @@ export const PanoViewer: React.FC<PanoViewerProps> = ({
       <button
         onClick={onBack}
         style={{ zIndex: 100 }}
-        className="absolute top-6 left-6 flex items-center space-x-2 px-4 py-2.5 bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-700/80 rounded-xl text-white text-xs font-semibold backdrop-blur-md shadow-2xl transition-all cursor-pointer"
+        aria-label="Back to Tour View"
+        className="absolute top-3 left-3 sm:top-6 sm:left-6 flex items-center space-x-2 px-2.5 py-2 sm:px-4 sm:py-2.5 bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-700/80 rounded-xl text-white text-xs font-semibold backdrop-blur-md shadow-2xl transition-all cursor-pointer"
       >
         <ArrowLeft className="w-4 h-4" style={{ color: BRAND }} />
-        <span>Back to Tour View</span>
+        <span className="sm:hidden">Back</span>
+        <span className="hidden sm:inline">Back to Tour View</span>
       </button>
 
       {/* Current scene badge */}
       <div
         style={{ zIndex: 100 }}
-        className="absolute top-6 left-1/2 -translate-x-1/2 px-5 py-2 bg-zinc-900/85 border border-zinc-700/80 rounded-xl text-white text-xs font-semibold backdrop-blur-md shadow-2xl pointer-events-none flex items-center space-x-2"
+        className="absolute top-16 left-3 right-3 sm:top-6 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 px-3 sm:px-5 py-2 bg-zinc-900/85 border border-zinc-700/80 rounded-xl text-white text-xs font-semibold backdrop-blur-md shadow-2xl pointer-events-none flex items-center justify-center space-x-2"
       >
         <span className="inline-block w-2 h-2 rounded-full animate-pulse" style={{ background: BRAND }} />
-        <span>STREET VIEW ID: {active.title}</span>
+        <span className="truncate">STREET VIEW ID: {active.title}</span>
       </div>
 
       {/* Day / Night toggle */}
       <div
         style={{ zIndex: 100 }}
-        className="absolute top-6 right-6 flex items-center bg-zinc-900/90 border border-zinc-700/80 rounded-xl p-1 backdrop-blur-md shadow-2xl"
+        className="absolute top-3 right-3 sm:top-6 sm:right-6 flex items-center bg-zinc-900/90 border border-zinc-700/80 rounded-xl p-1 backdrop-blur-md shadow-2xl"
       >
         <button
           onClick={() => {
@@ -1710,7 +1712,7 @@ export const PanoViewer: React.FC<PanoViewerProps> = ({
             setNight(false);
           }}
           style={!night ? { background: BRAND } : undefined}
-          className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+          className={`flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
             !night ? 'text-white shadow-lg' : 'text-zinc-400 hover:text-white'
           }`}
         >
@@ -1726,7 +1728,7 @@ export const PanoViewer: React.FC<PanoViewerProps> = ({
             setNight(true);
           }}
           style={night ? { background: BRAND } : undefined}
-          className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+          className={`flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
             night ? 'text-white shadow-lg' : 'text-zinc-400 hover:text-white'
           }`}
         >
