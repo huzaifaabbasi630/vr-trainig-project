@@ -105,13 +105,25 @@ export const TourView: React.FC<TourViewProps> = ({ onBackToMap }) => {
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [showFloorPlan, setShowFloorPlan] = useState<boolean>(false);
   const [isInPanoTour, setIsInPanoTour] = useState<boolean>(false); // 360 Pano Mode Trigger
+  const [isPerspectiveLoaded, setIsPerspectiveLoaded] = useState<boolean>(false);
+  const [perspectiveLoadError, setPerspectiveLoadError] = useState<boolean>(false);
+  const [perspectiveRetry, setPerspectiveRetry] = useState<number>(0);
 
   const audioCtxRef = useRef<AudioContext | null>(null);
   const noiseNodeRef = useRef<AudioNode | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
+  const perspectiveImageRef = useRef<HTMLImageElement>(null);
   const dragRef = useRef({ startX: 0, startY: 0, originX: 0, originY: 0, moved: false });
+
+  useEffect(() => {
+    const image = perspectiveImageRef.current;
+    if (image?.complete && image.naturalWidth > 0) {
+      setRatio(image.naturalWidth / image.naturalHeight);
+      setIsPerspectiveLoaded(true);
+    }
+  }, [perspectiveRetry]);
 
   // Web Audio Rain Sound
   const startRainSound = useCallback(() => {
@@ -358,6 +370,8 @@ export const TourView: React.FC<TourViewProps> = ({ onBackToMap }) => {
           }}
         >
           <img
+            key={perspectiveRetry}
+            ref={perspectiveImageRef}
             src={perspectiveImg}
             alt="360 Perspective Street View"
             draggable={false}
@@ -365,8 +379,11 @@ export const TourView: React.FC<TourViewProps> = ({ onBackToMap }) => {
               const img = e.currentTarget;
               if (img.naturalWidth && img.naturalHeight) {
                 setRatio(img.naturalWidth / img.naturalHeight);
+                setPerspectiveLoadError(false);
+                setIsPerspectiveLoaded(true);
               }
             }}
+            onError={() => setPerspectiveLoadError(true)}
             className="absolute inset-0 w-full h-full object-fill pointer-events-none select-none"
           />
 
@@ -484,6 +501,41 @@ export const TourView: React.FC<TourViewProps> = ({ onBackToMap }) => {
 
         <div className="absolute inset-0 pointer-events-none z-20 bg-[radial-gradient(ellipse_at_center,transparent_50%,rgba(0,0,0,0.4)_100%)]" />
       </div>
+
+      {!isPerspectiveLoaded && (
+        <div
+          role={perspectiveLoadError ? 'alert' : 'status'}
+          aria-live="polite"
+          aria-busy={!perspectiveLoadError}
+          className="absolute inset-0 z-[60] flex items-center justify-center bg-zinc-950 px-6 text-center"
+        >
+          {perspectiveLoadError ? (
+            <div className="max-w-sm">
+              <p className="text-lg font-semibold text-white">Property view unavailable</p>
+              <p className="mt-2 text-sm text-zinc-400">We could not load the property view. Please try again.</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setPerspectiveLoadError(false);
+                  setPerspectiveRetry((attempt) => attempt + 1);
+                }}
+                className="mt-5 rounded-lg bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-zinc-950 transition-colors hover:bg-emerald-400"
+              >
+                Retry
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center">
+              <span
+                aria-hidden="true"
+                className="h-12 w-12 animate-spin rounded-full border-4 border-white/20 border-t-emerald-400"
+              />
+              <p className="mt-5 text-sm font-semibold tracking-wide text-white">Loading property view...</p>
+              <p className="mt-2 text-xs text-zinc-400">Preparing the interactive tour</p>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Top Floating Controls (pt-20 hata diya kyunke container ab header ke neeche se start hota hai) */}
       <div className="relative z-30 pt-6 px-6 flex items-center justify-between pointer-events-none">

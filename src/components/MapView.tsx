@@ -77,6 +77,11 @@ export const MapView: React.FC<MapViewProps> = ({ onSelectStreet }) => {
     desc: string;
     streetId: string;
   } | null>(null);
+  const [mapImageSrc, setMapImageSrc] = useState<string | null>(null);
+  const [mapLoadProgress, setMapLoadProgress] = useState<number>(0);
+  const [mapLoadError, setMapLoadError] = useState<string | null>(null);
+  const [mapRetryToken, setMapRetryToken] = useState<number>(0);
+  const [isMapImageLoaded, setIsMapImageLoaded] = useState<boolean>(false);
 
   const [planes, setPlanes] = useState<PlaneData[]>([]);
   const planeId = useRef(0);
@@ -84,6 +89,61 @@ export const MapView: React.FC<MapViewProps> = ({ onSelectStreet }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef({ startX: 0, startY: 0, originX: 0, originY: 0, moved: false });
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let objectUrl: string | null = null;
+    let cancelled = false;
+
+    const loadMapImage = async () => {
+      try {
+        const response = await fetch(topViewImg, { signal: controller.signal });
+        if (!response.ok) {
+          throw new Error(`Unable to load aerial map (${response.status}).`);
+        }
+
+        const totalBytes = Number(response.headers.get('content-length'));
+        const reader = response.body?.getReader();
+        let blob: Blob;
+
+        if (reader) {
+          const chunks: ArrayBuffer[] = [];
+          let receivedBytes = 0;
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            const chunk = new ArrayBuffer(value.byteLength);
+            new Uint8Array(chunk).set(value);
+            chunks.push(chunk);
+            receivedBytes += value.byteLength;
+            if (totalBytes > 0) {
+              setMapLoadProgress(Math.min(90, Math.round((receivedBytes / totalBytes) * 90)));
+            }
+          }
+          blob = new Blob(chunks, { type: response.headers.get('content-type') ?? 'image/jpeg' });
+        } else {
+          setMapLoadProgress(90);
+          blob = await response.blob();
+        }
+
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(blob);
+        setMapImageSrc(objectUrl);
+        setMapLoadProgress(95);
+      } catch (error) {
+        if (cancelled || controller.signal.aborted) return;
+        console.error('[MapView] Unable to load the aerial map.', error);
+        setMapLoadError('We could not load the aerial map. Please try again.');
+      }
+    };
+
+    void loadMapImage();
+    return () => {
+      cancelled = true;
+      controller.abort();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [mapRetryToken]);
 
   // Stage = image size that COVERS the full screen
   const stage = useMemo(() => {
@@ -275,15 +335,18 @@ export const MapView: React.FC<MapViewProps> = ({ onSelectStreet }) => {
           }}
         >
           <img
-            src={topViewImg}
+            src={mapImageSrc ?? undefined}
             alt="1-TOP-VIEW"
             draggable={false}
             onLoad={(e) => {
               const img = e.currentTarget;
               if (img.naturalWidth && img.naturalHeight) {
                 setRatio(img.naturalWidth / img.naturalHeight);
+                setMapLoadProgress(100);
+                setIsMapImageLoaded(true);
               }
             }}
+            onError={() => setMapLoadError('We could not display the aerial map. Please try again.')}
             className="absolute inset-0 w-full h-full object-fill pointer-events-none select-none"
           />
 
@@ -408,6 +471,56 @@ export const MapView: React.FC<MapViewProps> = ({ onSelectStreet }) => {
         <div className="absolute inset-0 pointer-events-none z-[37] bg-[radial-gradient(ellipse_at_center,transparent_55%,rgba(0,0,0,0.35)_100%)]" />
       </div>
 
+      {!isMapImageLoaded && (
+        <div
+          role={mapLoadError ? 'alert' : 'status'}
+          aria-live="polite"
+          aria-busy={!mapLoadError}
+          className="absolute inset-0 z-[60] flex items-center justify-center bg-zinc-950 px-6 text-center"
+        >
+          {mapLoadError ? (
+            <div className="max-w-sm">
+              <p className="text-lg font-semibold text-white">Aerial map unavailable</p>
+              <p className="mt-2 text-sm text-zinc-400">{mapLoadError}</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setMapLoadError(null);
+                  setMapLoadProgress(0);
+                  setMapRetryToken((token) => token + 1);
+                }}
+                className="mt-5 rounded-lg bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-zinc-950 transition-colors hover:bg-emerald-400"
+              >
+                Retry
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center">
+              <span
+                aria-hidden="true"
+                className="h-12 w-12 animate-spin rounded-full border-4 border-white/20 border-t-emerald-400"
+              />
+              <p className="mt-5 text-sm font-semibold tracking-wide text-white">Loading aerial map...</p>
+              <p className="mt-2 text-xs text-zinc-400">Preparing the interactive map</p>
+              <div
+                className="mt-5 h-2 w-56 overflow-hidden rounded-full bg-white/10"
+                role="progressbar"
+                aria-label="Loading aerial map"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={mapLoadProgress}
+              >
+                <div
+                  className="h-full rounded-full bg-emerald-400 transition-[width] duration-200"
+                  style={{ width: `${mapLoadProgress}%` }}
+                />
+              </div>
+              <p className="mt-2 text-xs font-medium tabular-nums text-emerald-300">{mapLoadProgress}%</p>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ================= FLOATING UI ================= */}
       <div className="absolute inset-0 pointer-events-none z-40">
         {/* Title card */}
@@ -439,7 +552,7 @@ export const MapView: React.FC<MapViewProps> = ({ onSelectStreet }) => {
             <span>RADAR HUD</span>
           </div>
           <div className="relative w-full h-full">
-            <img src={topViewImg} alt="Minimap" className="w-full h-full object-cover opacity-60" />
+            <img src={mapImageSrc ?? undefined} alt="Minimap" className="w-full h-full object-cover opacity-60" />
             {/* Viewport Box Indicator */}
             <div 
               className="absolute border border-emerald-400 bg-emerald-500/20 rounded-[2px] transition-all duration-75"

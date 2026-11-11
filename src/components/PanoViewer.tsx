@@ -248,9 +248,15 @@ const preloadedImages = new Map<string, HTMLImageElement>();
 const resolvedImageCache = new Map<string, string>();
 const multiResConfigCache = new Map<string, Promise<PannellumMultiResConfig | null>>();
 
-const preloadImage = (src: string, priority: 'high' | 'low' = 'high'): Promise<void> => {
+const preloadImage = (
+  src: string,
+  priority: 'high' | 'low' = 'high',
+  onProgress?: (progress: number) => void,
+): Promise<void> => {
   const cached = imageLoadCache.get(src);
-  if (cached) return cached;
+  if (cached) {
+    return cached.then(() => onProgress?.(95));
+  }
 
   const promise = new Promise<void>((resolve, reject) => {
     const image = new Image();
@@ -261,14 +267,49 @@ const preloadImage = (src: string, priority: 'high' | 'low' = 'high'): Promise<v
       resolve();
     };
     image.onerror = () => reject(new Error(`Unable to load panorama image: ${src}`));
-    image.src = src;
 
-    if (image.complete) {
-      if (image.naturalWidth > 0) {
-        preloadedImages.set(src, image);
-        resolve();
-      } else reject(new Error(`Unable to decode panorama image: ${src}`));
+    const decodeImage = () => {
+      image.src = src;
+      if (image.complete) {
+        if (image.naturalWidth > 0) {
+          preloadedImages.set(src, image);
+          onProgress?.(95);
+          resolve();
+        } else reject(new Error(`Unable to decode panorama image: ${src}`));
+      }
+    };
+
+    if (!onProgress) {
+      decodeImage();
+      return;
     }
+
+    void fetch(src)
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(`Unable to fetch panorama image (${response.status}): ${src}`);
+        }
+
+        const totalBytes = Number(response.headers.get('content-length'));
+        const reader = response.body?.getReader();
+        if (!reader) {
+          onProgress(90);
+          return;
+        }
+
+        let receivedBytes = 0;
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          receivedBytes += value.byteLength;
+          if (totalBytes > 0) {
+            onProgress(Math.min(90, Math.round((receivedBytes / totalBytes) * 90)));
+          }
+        }
+        onProgress(90);
+      })
+      .then(decodeImage)
+      .catch(reject);
   });
 
   imageLoadCache.set(src, promise);
@@ -282,19 +323,23 @@ const loadImageWithFallback = async (
   primarySrc: string,
   fallbackSrc?: string,
   priority: 'high' | 'low' = 'high',
+  onProgress?: (progress: number) => void,
 ): Promise<string> => {
   const cachedSrc = resolvedImageCache.get(primarySrc);
-  if (cachedSrc) return cachedSrc;
+  if (cachedSrc) {
+    onProgress?.(95);
+    return cachedSrc;
+  }
 
   try {
-    await preloadImage(primarySrc, priority);
+    await preloadImage(primarySrc, priority, onProgress);
     resolvedImageCache.set(primarySrc, primarySrc);
     return primarySrc;
   } catch (primaryError) {
     if (!fallbackSrc || fallbackSrc === primarySrc) throw primaryError;
 
     console.warn('[PanoViewer] WebP panorama failed; trying the JPEG fallback.', primaryError);
-    await preloadImage(fallbackSrc, priority);
+    await preloadImage(fallbackSrc, priority, onProgress);
     resolvedImageCache.set(primarySrc, fallbackSrc);
     return fallbackSrc;
   }
@@ -367,6 +412,7 @@ const loadScenePanorama = async (
   scene: SceneDef,
   displaySrc: string,
   useMultiRes: boolean,
+  onProgress?: (progress: number) => void,
 ): Promise<LoadedPanorama> => {
   if (useMultiRes) {
     try {
@@ -387,7 +433,7 @@ const loadScenePanorama = async (
 
   return {
     type: 'equirectangular',
-    src: await loadImageWithFallback(displaySrc, scene.fallbackSrc),
+    src: await loadImageWithFallback(displaySrc, scene.fallbackSrc, 'high', onProgress),
   };
 };
 
@@ -1109,6 +1155,7 @@ export const PanoViewer: React.FC<PanoViewerProps> = ({
   const nightRef = useRef<Record<string, string>>({});
   const [coords, setCoords] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [loadProgress, setLoadProgress] = useState<number>(0);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loadedPanorama, setLoadedPanorama] = useState<LoadedPanorama | null>(null);
   const [retryToken, setRetryToken] = useState<number>(0);
@@ -1171,6 +1218,7 @@ export const PanoViewer: React.FC<PanoViewerProps> = ({
     lastView.current = null;
     activeRef.current = targetId;
     setIsLoading(true);
+    setLoadProgress(0);
     setLoadError(null);
     setLoadedPanorama(null);
     setActiveId(targetId);
@@ -1190,7 +1238,9 @@ export const PanoViewer: React.FC<PanoViewerProps> = ({
       };
     }
 
-    void loadScenePanorama(active, displaySrc, !useNight)
+    void loadScenePanorama(active, displaySrc, !useNight, (progress) => {
+      if (!cancelled) setLoadProgress(progress);
+    })
       .then((panorama) => {
         if (!cancelled) setLoadedPanorama(panorama);
       })
@@ -1266,6 +1316,7 @@ export const PanoViewer: React.FC<PanoViewerProps> = ({
       fallbackStarted = true;
       console.warn('[PanoViewer] Multi-resolution tiles failed; switching to the panorama image.', error);
       setIsLoading(true);
+      setLoadProgress(0);
       const fallbackImage = displaySrc ?? active.src;
       if (!fallbackImage) {
         setIsLoading(false);
@@ -1273,7 +1324,9 @@ export const PanoViewer: React.FC<PanoViewerProps> = ({
         return;
       }
 
-      void loadImageWithFallback(fallbackImage, active.fallbackSrc)
+      void loadImageWithFallback(fallbackImage, active.fallbackSrc, 'high', (progress) => {
+        if (!cancelled) setLoadProgress(progress);
+      })
         .then((src) => {
           if (!cancelled && (!currentViewer || viewerRef.current === currentViewer)) {
             setLoadedPanorama({ type: 'equirectangular', src });
@@ -1348,6 +1401,7 @@ export const PanoViewer: React.FC<PanoViewerProps> = ({
     viewerRef.current = viewer;
     viewer.on('load', () => {
       if (viewerRef.current !== viewer) return;
+      setLoadProgress(100);
       setIsLoading(false);
       setLoadError(null);
     });
@@ -1640,6 +1694,7 @@ export const PanoViewer: React.FC<PanoViewerProps> = ({
               type="button"
               onClick={() => {
                 setIsLoading(true);
+                setLoadProgress(0);
                 setLoadError(null);
                 setLoadedPanorama(null);
                 setRetryToken((token) => token + 1);
@@ -1660,6 +1715,20 @@ export const PanoViewer: React.FC<PanoViewerProps> = ({
               Loading 360° Environment...
             </p>
             <p className="mt-2 text-xs text-zinc-400">Preparing your immersive tour</p>
+            <div
+              className="mt-5 h-2 w-56 overflow-hidden rounded-full bg-white/10"
+              role="progressbar"
+              aria-label="Loading 360° environment"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={loadProgress}
+            >
+              <div
+                className="h-full rounded-full bg-emerald-400 transition-[width] duration-200"
+                style={{ width: `${loadProgress}%` }}
+              />
+            </div>
+            <p className="mt-2 text-xs font-medium tabular-nums text-emerald-300">{loadProgress}%</p>
           </div>
         )}
       </div>
@@ -1707,6 +1776,7 @@ export const PanoViewer: React.FC<PanoViewerProps> = ({
           onClick={() => {
             if (night && !active.interior) {
               setIsLoading(true);
+              setLoadProgress(0);
               setLoadError(null);
             }
             setNight(false);
@@ -1723,6 +1793,7 @@ export const PanoViewer: React.FC<PanoViewerProps> = ({
           onClick={() => {
             if (!night && !active.interior) {
               setIsLoading(true);
+              setLoadProgress(0);
               setLoadError(null);
             }
             setNight(true);
