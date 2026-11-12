@@ -157,21 +157,21 @@ const panoFiles = import.meta.glob('../assets/pano/*.{jpg,jpeg,JPG,JPEG,png,PNG,
 }) as Record<string, string>;
 
 /* Street 2 image: src/assets/AFB/ */
-const afbFiles = import.meta.glob('../assets/AFB/*.{jpg,jpeg,JPG,JPEG,png,PNG,webp}', {
+const afbFiles = import.meta.glob('../assets/AFB/*.webp', {
   eager: true,
   query: '?url',
   import: 'default',
 }) as Record<string, string>;
 
 /* Street 3 image: src/assets/SCA/ */
-const scaFiles = import.meta.glob('../assets/SCA/*.{jpg,jpeg,JPG,JPEG,png,PNG,webp}', {
+const scaFiles = import.meta.glob('../assets/SCA/*.webp', {
   eager: true,
   query: '?url',
   import: 'default',
 }) as Record<string, string>;
 
 /* Street 1 image: src/assets/PVS/ */
-const pvsFiles = import.meta.glob('../assets/PVS/*.{jpg,jpeg,JPG,JPEG,png,PNG,webp}', {
+const pvsFiles = import.meta.glob('../assets/PVS/*.webp', {
   eager: true,
   query: '?url',
   import: 'default',
@@ -179,7 +179,7 @@ const pvsFiles = import.meta.glob('../assets/PVS/*.{jpg,jpeg,JPG,JPEG,png,PNG,we
 
 /* Foyer image: src/assets/room/ */
 const roomFiles = import.meta.glob(
-  '../assets/{room,Room,ROOM,rooms,Rooms}/*.{jpg,jpeg,JPG,JPEG,png,PNG,webp}',
+  '../assets/{room,Room,ROOM,rooms,Rooms}/*.webp',
   {
     eager: true,
     query: '?url',

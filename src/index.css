@@ -1,1 +1,20 @@
 @import "tailwindcss";
+
+@keyframes loading-progress {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(300%);
+  }
+}
+
+.loading-progress-indicator {
+  animation: loading-progress 1.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading-progress-indicator {
+    animation: none;
+  }
+}

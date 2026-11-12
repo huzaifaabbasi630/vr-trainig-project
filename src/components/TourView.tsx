@@ -1,9 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, ZoomIn, ZoomOut, RotateCcw, X, Building, Home, Utensils, Bed, Sun, CloudRain, Sunset, Volume2, VolumeX, Layout, CheckCircle2, AlertCircle } from 'lucide-react';
-import perspectiveImg from '../assets/2-PERSPECTIVE.jpeg';
-import streetPanoImg from '../assets/PVS/3- Street View 1.jpeg'; // Aapki 360 panoramic image
-import { PanoViewer } from './PanoViewer';
+import perspectiveImg from '../assets/2-PERSPECTIVE.webp';
+import streetPanoImg from '../assets/PVS/3- Street View 1.webp';
+
+const PanoViewer = React.lazy(async () => {
+  const { PanoViewer } = await import('./PanoViewer');
+  return { default: PanoViewer };
+});
 
 interface TourViewProps {
   streetId: string | null;
@@ -100,7 +104,7 @@ export const TourView: React.FC<TourViewProps> = ({ onBackToMap }) => {
   });
 
   const [hoveredZone, setHoveredZone] = useState<string | null>(null);
-  const [selectedZone, setSelectedZone] = useState<ScaZone | null>(ZONES[2]);
+  const [selectedZone, setSelectedZone] = useState<ScaZone | null>(null);
   const [weatherMode, setWeatherMode] = useState<'sunny' | 'rainy' | 'sunset'>('sunny');
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [showFloorPlan, setShowFloorPlan] = useState<boolean>(false);
@@ -300,26 +304,48 @@ export const TourView: React.FC<TourViewProps> = ({ onBackToMap }) => {
   // Agar user ne "Start the virtual tour" click kiya toh 360 Pannellum viewer open ho jayega
   if (isInPanoTour) {
     return (
-      <PanoViewer
-        imageSrc={streetPanoImg}
-        initialSceneId={
-          selectedZone?.id === 'AFB'
-            ? 'street2'
-            : selectedZone?.id === 'SCA'
-            ? 'street3'
-            : 'street1'
+      <React.Suspense
+        fallback={
+          <div className="fixed inset-0 flex items-center justify-center bg-zinc-950 text-center">
+            <div className="flex flex-col items-center">
+              <span
+                aria-hidden="true"
+                className="h-12 w-12 animate-spin rounded-full border-4 border-white/20 border-t-emerald-400"
+              />
+              <p className="mt-5 text-sm font-semibold text-white">Preparing 360° tour...</p>
+              <div
+                className="mt-5 h-2 w-56 overflow-hidden rounded-full bg-white/10"
+                role="progressbar"
+                aria-label="Preparing 360° tour"
+                aria-valuetext="Preparing 360° tour"
+              >
+                <div className="loading-progress-indicator h-full w-1/3 rounded-full bg-emerald-400" />
+              </div>
+            </div>
+          </div>
         }
-        onBack={() => setIsInPanoTour(false)}
-      />
+      >
+        <PanoViewer
+          imageSrc={streetPanoImg}
+          initialSceneId={
+            selectedZone?.id === 'AFB'
+              ? 'street2'
+              : selectedZone?.id === 'SCA'
+                ? 'street3'
+                : 'street1'
+          }
+          onBack={() => setIsInPanoTour(false)}
+        />
+      </React.Suspense>
     );
   }
 
   return (
     <motion.div
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 1.05 }}
-      transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.3, ease: 'easeOut' }}
       // top-20 (80px) = Global Header ki height. Header z-[100] hai, ye z-30 pe hai, to header hamesha upar rahega.
       className="fixed inset-x-0 bottom-0 top-20 bg-zinc-950 z-30 flex flex-col justify-between overflow-hidden select-none font-sans"
     >
@@ -532,6 +558,16 @@ export const TourView: React.FC<TourViewProps> = ({ onBackToMap }) => {
               />
               <p className="mt-5 text-sm font-semibold tracking-wide text-white">Loading property view...</p>
               <p className="mt-2 text-xs text-zinc-400">Preparing the interactive tour</p>
+              <div
+                className="mt-5 h-2 w-56 overflow-hidden rounded-full bg-white/10"
+                role="progressbar"
+                aria-label="Loading property view"
+                aria-valuetext="Loading property view"
+              >
+                <div
+                  className="loading-progress-indicator h-full w-1/3 rounded-full bg-emerald-400"
+                />
+              </div>
             </div>
           )}
         </div>

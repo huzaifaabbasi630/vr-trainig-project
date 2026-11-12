@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MapPin, ZoomIn, ZoomOut, RotateCcw, Compass, X, ArrowRight, Building, Globe } from 'lucide-react';
-import topViewImg from '../assets/1-TOP-VIEW.jpeg';
+import topViewImg from '../assets/1-TOP-VIEW.webp';
 import planeImg from '../assets/image-removebg-preview.png';
 
 interface MapViewProps {
+  isActive?: boolean;
   onSelectStreet: (streetId: string) => void;
 }
 
@@ -62,7 +63,7 @@ const CLOUDS = [
   { top: 86, width: 380, duration: 115, progress: 0.9, opacity: 0.4 },
 ];
 
-export const MapView: React.FC<MapViewProps> = ({ onSelectStreet }) => {
+export const MapView: React.FC<MapViewProps> = ({ isActive = true, onSelectStreet }) => {
   const [view, setView] = useState<ViewState>({ scale: 1, x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [ratio, setRatio] = useState<number>(16 / 9);
@@ -77,8 +78,6 @@ export const MapView: React.FC<MapViewProps> = ({ onSelectStreet }) => {
     desc: string;
     streetId: string;
   } | null>(null);
-  const [mapImageSrc, setMapImageSrc] = useState<string | null>(null);
-  const [mapLoadProgress, setMapLoadProgress] = useState<number>(0);
   const [mapLoadError, setMapLoadError] = useState<string | null>(null);
   const [mapRetryToken, setMapRetryToken] = useState<number>(0);
   const [isMapImageLoaded, setIsMapImageLoaded] = useState<boolean>(false);
@@ -89,61 +88,6 @@ export const MapView: React.FC<MapViewProps> = ({ onSelectStreet }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef({ startX: 0, startY: 0, originX: 0, originY: 0, moved: false });
-
-  useEffect(() => {
-    const controller = new AbortController();
-    let objectUrl: string | null = null;
-    let cancelled = false;
-
-    const loadMapImage = async () => {
-      try {
-        const response = await fetch(topViewImg, { signal: controller.signal });
-        if (!response.ok) {
-          throw new Error(`Unable to load aerial map (${response.status}).`);
-        }
-
-        const totalBytes = Number(response.headers.get('content-length'));
-        const reader = response.body?.getReader();
-        let blob: Blob;
-
-        if (reader) {
-          const chunks: ArrayBuffer[] = [];
-          let receivedBytes = 0;
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            const chunk = new ArrayBuffer(value.byteLength);
-            new Uint8Array(chunk).set(value);
-            chunks.push(chunk);
-            receivedBytes += value.byteLength;
-            if (totalBytes > 0) {
-              setMapLoadProgress(Math.min(90, Math.round((receivedBytes / totalBytes) * 90)));
-            }
-          }
-          blob = new Blob(chunks, { type: response.headers.get('content-type') ?? 'image/jpeg' });
-        } else {
-          setMapLoadProgress(90);
-          blob = await response.blob();
-        }
-
-        if (cancelled) return;
-        objectUrl = URL.createObjectURL(blob);
-        setMapImageSrc(objectUrl);
-        setMapLoadProgress(95);
-      } catch (error) {
-        if (cancelled || controller.signal.aborted) return;
-        console.error('[MapView] Unable to load the aerial map.', error);
-        setMapLoadError('We could not load the aerial map. Please try again.');
-      }
-    };
-
-    void loadMapImage();
-    return () => {
-      cancelled = true;
-      controller.abort();
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [mapRetryToken]);
 
   // Stage = image size that COVERS the full screen
   const stage = useMemo(() => {
@@ -263,6 +207,7 @@ export const MapView: React.FC<MapViewProps> = ({ onSelectStreet }) => {
 
   /* ---------- Airplane spawner ---------- */
   useEffect(() => {
+    if (!isActive) return;
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
     let timer: ReturnType<typeof setTimeout>;
@@ -292,12 +237,16 @@ export const MapView: React.FC<MapViewProps> = ({ onSelectStreet }) => {
 
     timer = setTimeout(spawn, 2500);
     return () => clearTimeout(timer);
-  }, []);
+  }, [isActive]);
 
   const removePlane = (id: number) => setPlanes((p) => p.filter((pl) => pl.id !== id));
 
   return (
-    <div className="fixed inset-0 bg-zinc-950 overflow-hidden font-sans select-none">
+    <div
+      className="fixed inset-0 bg-zinc-950 overflow-hidden font-sans select-none"
+      style={{ visibility: isActive ? 'visible' : 'hidden' }}
+      aria-hidden={!isActive}
+    >
       {/* Animations */}
       <style>{`
         @keyframes cloudDrift {
@@ -335,14 +284,14 @@ export const MapView: React.FC<MapViewProps> = ({ onSelectStreet }) => {
           }}
         >
           <img
-            src={mapImageSrc ?? undefined}
+            key={mapRetryToken}
+            src={topViewImg}
             alt="1-TOP-VIEW"
             draggable={false}
             onLoad={(e) => {
               const img = e.currentTarget;
               if (img.naturalWidth && img.naturalHeight) {
                 setRatio(img.naturalWidth / img.naturalHeight);
-                setMapLoadProgress(100);
                 setIsMapImageLoaded(true);
               }
             }}
@@ -429,6 +378,7 @@ export const MapView: React.FC<MapViewProps> = ({ onSelectStreet }) => {
                 filter: 'drop-shadow(0 70px 28px rgba(0,0,0,0.35))',
                 animation: `cloudDrift ${c.duration}s linear infinite`,
                 animationDelay: `-${c.duration * c.progress}s`,
+                animationPlayState: isActive ? 'running' : 'paused',
                 willChange: 'transform',
               }}
             >
@@ -452,6 +402,7 @@ export const MapView: React.FC<MapViewProps> = ({ onSelectStreet }) => {
                   '--ex': `${p.ex}px`,
                   '--ey': `${p.ey}px`,
                   animation: `planeFly ${p.duration}s linear forwards`,
+                  animationPlayState: isActive ? 'running' : 'paused',
                   filter: 'drop-shadow(35px 55px 12px rgba(0,0,0,0.4))',
                   willChange: 'transform',
                 } as React.CSSProperties
@@ -486,7 +437,6 @@ export const MapView: React.FC<MapViewProps> = ({ onSelectStreet }) => {
                 type="button"
                 onClick={() => {
                   setMapLoadError(null);
-                  setMapLoadProgress(0);
                   setMapRetryToken((token) => token + 1);
                 }}
                 className="mt-5 rounded-lg bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-zinc-950 transition-colors hover:bg-emerald-400"
@@ -506,16 +456,10 @@ export const MapView: React.FC<MapViewProps> = ({ onSelectStreet }) => {
                 className="mt-5 h-2 w-56 overflow-hidden rounded-full bg-white/10"
                 role="progressbar"
                 aria-label="Loading aerial map"
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-valuenow={mapLoadProgress}
+                aria-valuetext="Loading aerial map"
               >
-                <div
-                  className="h-full rounded-full bg-emerald-400 transition-[width] duration-200"
-                  style={{ width: `${mapLoadProgress}%` }}
-                />
+                <div className="loading-progress-indicator h-full w-1/3 rounded-full bg-emerald-400" />
               </div>
-              <p className="mt-2 text-xs font-medium tabular-nums text-emerald-300">{mapLoadProgress}%</p>
             </div>
           )}
         </div>
@@ -552,7 +496,7 @@ export const MapView: React.FC<MapViewProps> = ({ onSelectStreet }) => {
             <span>RADAR HUD</span>
           </div>
           <div className="relative w-full h-full">
-            <img src={mapImageSrc ?? undefined} alt="Minimap" className="w-full h-full object-cover opacity-60" />
+            <img src={topViewImg} alt="Minimap" className="w-full h-full object-cover opacity-60" />
             {/* Viewport Box Indicator */}
             <div 
               className="absolute border border-emerald-400 bg-emerald-500/20 rounded-[2px] transition-all duration-75"

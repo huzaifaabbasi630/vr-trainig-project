@@ -4,7 +4,7 @@ import { Header } from './components/Header';
 import { MapView } from './components/MapView';
 import { TourView } from './components/TourView';
 import { ArrowRight, Eye, MapPin, Layers } from 'lucide-react';
-import topViewImg from './assets/1-TOP-VIEW.jpeg';
+import topViewImg from './assets/1-TOP-VIEW.webp';
 
 export default function App() {
   const [currentView, setCurrentView] = useState<'landing' | 'map' | 'tour'>('landing');
@@ -19,12 +19,11 @@ export default function App() {
       {/* Landing Background Image */}
       <motion.div 
         className="absolute inset-0 z-0 bg-contain bg-center bg-no-repeat"
-        style={{ backgroundImage: `url(${topViewImg})` }}
+        style={{ backgroundImage: `url(${topViewImg})`, filter: 'blur(20px) brightness(0.6)' }}
         animate={{
-          filter: currentView === 'landing' ? 'blur(20px) brightness(0.6)' : 'blur(0px) brightness(1)',
           opacity: currentView === 'landing' ? 1 : 0
         }}
-        transition={{ duration: 0.8 }}
+        transition={{ duration: 0.35 }}
       />
 
       {/* Landing Overlay Screen */}
@@ -34,7 +33,7 @@ export default function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0, y: -20 }}
-            transition={{ duration: 0.6 }}
+            transition={{ duration: 0.3 }}
             className="relative z-10 min-h-screen flex flex-col justify-center items-center px-4 pt-20 text-center"
           >
             <motion.div 
@@ -92,8 +91,9 @@ export default function App() {
       </AnimatePresence>
 
       {/* Map View */}
-      {currentView === 'map' && (
+      {currentView !== 'landing' && (
         <MapView 
+          isActive={currentView === 'map'}
           onSelectStreet={(streetId) => {
             setSelectedStreet(streetId);
             setCurrentView('tour');
