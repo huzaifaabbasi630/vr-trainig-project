@@ -87,6 +87,13 @@ export const MapView: React.FC<MapViewProps> = ({ isActive = true, onSelectStree
 
   const containerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
+  const pointersRef = useRef(new Map<number, { x: number; y: number }>());
+  const pinchRef = useRef<{
+    distance: number;
+    scale: number;
+    worldX: number;
+    worldY: number;
+  } | null>(null);
   const dragRef = useRef({ startX: 0, startY: 0, originX: 0, originY: 0, moved: false });
 
   // Stage = image size that COVERS the full screen
@@ -167,6 +174,26 @@ export const MapView: React.FC<MapViewProps> = ({ isActive = true, onSelectStree
   // Drag / pan
   const handlePointerDown = (e: React.PointerEvent) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
+    const pointers = pointersRef.current;
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    if (pointers.size === 2) {
+      const [first, second] = [...pointers.values()];
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const centerX = (first.x + second.x) / 2 - rect.left - rect.width / 2;
+      const centerY = (first.y + second.y) / 2 - rect.top - rect.height / 2;
+      pinchRef.current = {
+        distance: Math.hypot(first.x - second.x, first.y - second.y),
+        scale: view.scale,
+        worldX: (centerX - view.x) / view.scale,
+        worldY: (centerY - view.y) / view.scale,
+      };
+      dragRef.current.moved = true;
+      setIsDragging(true);
+      return;
+    }
+
     dragRef.current = {
       startX: e.clientX,
       startY: e.clientY,
@@ -180,6 +207,29 @@ export const MapView: React.FC<MapViewProps> = ({ isActive = true, onSelectStree
   useEffect(() => {
     if (!isDragging) return;
     const onMove = (e: PointerEvent) => {
+      const pointer = pointersRef.current.get(e.pointerId);
+      if (!pointer) return;
+      pointer.x = e.clientX;
+      pointer.y = e.clientY;
+
+      const pinch = pinchRef.current;
+      if (pointersRef.current.size >= 2 && pinch) {
+        const [first, second] = [...pointersRef.current.values()];
+        const rect = containerRef.current?.getBoundingClientRect();
+        if (!rect) return;
+        const scale = Math.min(
+          MAX_SCALE,
+          Math.max(MIN_SCALE, pinch.scale * (Math.hypot(first.x - second.x, first.y - second.y) / pinch.distance))
+        );
+        const centerX = (first.x + second.x) / 2 - rect.left - rect.width / 2;
+        const centerY = (first.y + second.y) / 2 - rect.top - rect.height / 2;
+        setView(() => {
+          const c = clamp(centerX - pinch.worldX * scale, centerY - pinch.worldY * scale, scale);
+          return { scale, x: c.x, y: c.y };
+        });
+        return;
+      }
+
       const d = dragRef.current;
       const dx = e.clientX - d.startX;
       const dy = e.clientY - d.startY;
@@ -189,7 +239,11 @@ export const MapView: React.FC<MapViewProps> = ({ isActive = true, onSelectStree
         return { ...prev, x: c.x, y: c.y };
       });
     };
-    const onUp = () => setIsDragging(false);
+    const onUp = () => {
+      pointersRef.current.clear();
+      pinchRef.current = null;
+      setIsDragging(false);
+    };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
     window.addEventListener('pointercancel', onUp);
@@ -515,7 +569,8 @@ export const MapView: React.FC<MapViewProps> = ({ isActive = true, onSelectStree
           <button
             onClick={handleZoomIn}
             disabled={view.scale >= MAX_SCALE}
-            className="p-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed text-zinc-200 transition-colors cursor-pointer"
+            aria-label="Zoom in"
+            className="flex min-h-11 min-w-11 items-center justify-center rounded-lg bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed text-zinc-200 transition-colors cursor-pointer"
             title="Zoom In"
           >
             <ZoomIn className="w-4 h-4" />
@@ -524,14 +579,16 @@ export const MapView: React.FC<MapViewProps> = ({ isActive = true, onSelectStree
           <button
             onClick={handleZoomOut}
             disabled={view.scale <= MIN_SCALE}
-            className="p-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed text-zinc-200 transition-colors cursor-pointer"
+            aria-label="Zoom out"
+            className="flex min-h-11 min-w-11 items-center justify-center rounded-lg bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed text-zinc-200 transition-colors cursor-pointer"
             title="Zoom Out"
           >
             <ZoomOut className="w-4 h-4" />
           </button>
           <button
             onClick={handleResetZoom}
-            className="p-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 transition-colors cursor-pointer"
+            aria-label="Reset map zoom"
+            className="flex min-h-11 min-w-11 items-center justify-center rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 transition-colors cursor-pointer"
             title="Reset Map"
           >
             <RotateCcw className="w-4 h-4" />
