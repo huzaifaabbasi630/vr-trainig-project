@@ -128,20 +128,6 @@ const MULTIRES_SCENE_IDS = new Set([
   'living',
   'kitchen',
 ]);
-const SCENE_THUMBNAILS: Record<string, string> = {
-  street1: `${import.meta.env.BASE_URL}pano-thumbnails/street1.jpg`,
-  street2: `${import.meta.env.BASE_URL}pano-thumbnails/street2.jpg`,
-  street3: `${import.meta.env.BASE_URL}pano-thumbnails/street3.jpg`,
-  foyer: `${import.meta.env.BASE_URL}pano-thumbnails/foyer.jpg`,
-  drawing: `${import.meta.env.BASE_URL}pano-thumbnails/drawing.jpg`,
-  bedroom1: `${import.meta.env.BASE_URL}pano-thumbnails/bedroom1.jpg`,
-  bedroom2: `${import.meta.env.BASE_URL}pano-thumbnails/bedroom2.jpg`,
-  bathroom1: `${import.meta.env.BASE_URL}pano-thumbnails/bathroom1.jpg`,
-  bathroom2: `${import.meta.env.BASE_URL}pano-thumbnails/bathroom2.jpg`,
-  living: `${import.meta.env.BASE_URL}pano-thumbnails/living.jpg`,
-  dining: `${import.meta.env.BASE_URL}pano-thumbnails/dining.jpg`,
-  kitchen: `${import.meta.env.BASE_URL}pano-thumbnails/kitchen.jpg`,
-};
 
 const D2R = Math.PI / 180;
 const rand = (min: number, max: number) => Math.random() * (max - min) + min;
@@ -231,6 +217,21 @@ const diningImagePair =
   findImagePair(roomFiles, 'dinning', true);
 const kitchenImagePair =
   findImagePair(roomFiles, '9-kitchen.jpeg') ?? findImagePair(roomFiles, 'kitchen', true);
+
+const SCENE_THUMBNAILS: Record<string, string> = {
+  street1: street1ImagePair?.src ?? '',
+  street2: street2ImagePair?.src ?? '',
+  street3: street3ImagePair?.src ?? '',
+  foyer: foyerImagePair?.src ?? '',
+  drawing: drawingImagePair?.src ?? '',
+  bedroom1: bedroom1ImagePair?.src ?? '',
+  bedroom2: bedroom2ImagePair?.src ?? '',
+  bathroom1: bathroom1ImagePair?.src ?? '',
+  bathroom2: bathroom2ImagePair?.src ?? '',
+  living: livingImagePair?.src ?? '',
+  dining: diningImagePair?.src ?? '',
+  kitchen: kitchenImagePair?.src ?? '',
+};
 
 /* Optional people images */
 const peopleFiles = Object.values(
@@ -1380,8 +1381,8 @@ export const PanoViewer: React.FC<PanoViewerProps> = ({
         showFullscreenCtrl: true,
         hfov: lastView.current?.hfov ?? 110,
         yaw: lastView.current?.yaw ?? 0,
-        minHfov: 50,
-        maxHfov: 120,
+        minHfov: window.matchMedia('(max-width: 640px)').matches ? 35 : 50,
+        maxHfov: window.matchMedia('(max-width: 640px)').matches ? 130 : 120,
         hotSpots,
       });
     } catch (error) {
@@ -1706,29 +1707,18 @@ export const PanoViewer: React.FC<PanoViewerProps> = ({
             </button>
           </div>
         ) : (
-          <div className="flex flex-col items-center">
-            <span
-              aria-hidden="true"
-              className="h-12 w-12 animate-spin rounded-full border-4 border-white/20 border-t-emerald-400"
-            />
-            <p className="mt-5 text-sm font-semibold tracking-wide text-white">
-              Loading 360° Environment...
-            </p>
-            <p className="mt-2 text-xs text-zinc-400">Preparing your immersive tour</p>
+          <div
+            className="h-2 w-56 overflow-hidden rounded-full bg-white/10"
+            role="progressbar"
+            aria-label="Loading 360° environment"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={loadProgress}
+          >
             <div
-              className="mt-5 h-2 w-56 overflow-hidden rounded-full bg-white/10"
-              role="progressbar"
-              aria-label="Loading 360° environment"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={loadProgress}
-            >
-              <div
-                className="h-full rounded-full bg-emerald-400 transition-[width] duration-200"
-                style={{ width: `${loadProgress}%` }}
-              />
-            </div>
-            <p className="mt-2 text-xs font-medium tabular-nums text-emerald-300">{loadProgress}%</p>
+              className="h-full rounded-full bg-emerald-400 transition-[width] duration-200"
+              style={{ width: `${loadProgress}%` }}
+            />
           </div>
         )}
       </div>

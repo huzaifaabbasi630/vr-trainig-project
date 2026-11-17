@@ -25,8 +25,6 @@ interface PlaneData {
   duration: number;
 }
 
-const MIN_SCALE = 1;
-const MAX_SCALE = 4;
 const DRAG_THRESHOLD = 5;
 
 // Zone position (percent of the IMAGE)
@@ -71,6 +69,10 @@ export const MapView: React.FC<MapViewProps> = ({ isActive = true, onSelectStree
     w: typeof window !== 'undefined' ? window.innerWidth : 1280,
     h: typeof window !== 'undefined' ? window.innerHeight : 720,
   });
+  const isSmallScreen = box.w <= 640;
+  const minScale = isSmallScreen ? 0.75 : 1;
+  const maxScale = isSmallScreen ? 8 : 4;
+  const zoomStep = isSmallScreen ? 1 : 0.5;
 
   const [hoveredZone, setHoveredZone] = useState<string | null>(null);
   const [selectedDetails, setSelectedDetails] = useState<{
@@ -81,6 +83,7 @@ export const MapView: React.FC<MapViewProps> = ({ isActive = true, onSelectStree
   const [mapLoadError, setMapLoadError] = useState<string | null>(null);
   const [mapRetryToken, setMapRetryToken] = useState<number>(0);
   const [isMapImageLoaded, setIsMapImageLoaded] = useState<boolean>(false);
+  const [mapLoadProgress, setMapLoadProgress] = useState<number>(0);
 
   const [planes, setPlanes] = useState<PlaneData[]>([]);
   const planeId = useRef(0);
@@ -95,6 +98,37 @@ export const MapView: React.FC<MapViewProps> = ({ isActive = true, onSelectStree
     worldY: number;
   } | null>(null);
   const dragRef = useRef({ startX: 0, startY: 0, originX: 0, originY: 0, moved: false });
+
+  // Progress animation: 1% to 100% with smooth easing
+  useEffect(() => {
+    if (isMapImageLoaded || mapLoadError) {
+      setMapLoadProgress(100);
+      return;
+    }
+    let cancelled = false;
+    let rafId: number;
+    const startTime = performance.now();
+    const duration = 1000; // 1 second for full progress
+
+    const animate = (now: number) => {
+      if (cancelled) return;
+      const elapsed = now - startTime;
+      const rawProgress = Math.min(elapsed / duration, 1);
+      const easedProgress = 1 - Math.pow(1 - rawProgress, 3);
+      const progress = Math.max(1, Math.round(easedProgress * 100));
+      setMapLoadProgress(progress);
+
+      if (rawProgress < 1) {
+        rafId = requestAnimationFrame(animate);
+      }
+    };
+
+    rafId = requestAnimationFrame(animate);
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(rafId);
+    };
+  }, [isMapImageLoaded, mapLoadError, mapRetryToken]);
 
   // Stage = image size that COVERS the full screen
   const stage = useMemo(() => {
@@ -128,26 +162,27 @@ export const MapView: React.FC<MapViewProps> = ({ isActive = true, onSelectStree
   const zoomTo = useCallback(
     (nextScale: number, cx = 0, cy = 0) => {
       setView((prev) => {
-        const s = Math.min(MAX_SCALE, Math.max(MIN_SCALE, nextScale));
+        const s = Math.min(maxScale, Math.max(minScale, nextScale));
         if (s === prev.scale) return prev;
         const k = s / prev.scale;
         const c = clamp(cx - (cx - prev.x) * k, cy - (cy - prev.y) * k, s);
         return { scale: s, x: c.x, y: c.y };
       });
     },
-    [clamp]
+    [clamp, maxScale, minScale]
   );
 
-  const handleZoomIn = () => zoomTo(view.scale + 0.5);
-  const handleZoomOut = () => zoomTo(view.scale - 0.5);
+  const handleZoomIn = () => zoomTo(view.scale + zoomStep);
+  const handleZoomOut = () => zoomTo(view.scale - zoomStep);
   const handleResetZoom = () => setView({ scale: 1, x: 0, y: 0 });
 
   useEffect(() => {
     setView((prev) => {
-      const c = clamp(prev.x, prev.y, prev.scale);
-      return { ...prev, x: c.x, y: c.y };
+      const scale = Math.min(maxScale, Math.max(minScale, prev.scale));
+      const c = clamp(prev.x, prev.y, scale);
+      return { ...prev, scale, x: c.x, y: c.y };
     });
-  }, [box, stage, clamp]);
+  }, [box, stage, clamp, maxScale, minScale]);
 
   // Mouse wheel zoom
   useEffect(() => {
@@ -159,8 +194,8 @@ export const MapView: React.FC<MapViewProps> = ({ isActive = true, onSelectStree
       const cx = e.clientX - rect.left - rect.width / 2;
       const cy = e.clientY - rect.top - rect.height / 2;
       setView((prev) => {
-        const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
-        const s = Math.min(MAX_SCALE, Math.max(MIN_SCALE, prev.scale * factor));
+        const factor = e.deltaY < 0 ? (isSmallScreen ? 1.2 : 1.15) : 1 / (isSmallScreen ? 1.2 : 1.15);
+        const s = Math.min(maxScale, Math.max(minScale, prev.scale * factor));
         if (s === prev.scale) return prev;
         const k = s / prev.scale;
         const c = clamp(cx - (cx - prev.x) * k, cy - (cy - prev.y) * k, s);
@@ -169,7 +204,7 @@ export const MapView: React.FC<MapViewProps> = ({ isActive = true, onSelectStree
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
-  }, [clamp]);
+  }, [clamp, isSmallScreen, maxScale, minScale]);
 
   // Drag / pan
   const handlePointerDown = (e: React.PointerEvent) => {
@@ -218,8 +253,8 @@ export const MapView: React.FC<MapViewProps> = ({ isActive = true, onSelectStree
         const rect = containerRef.current?.getBoundingClientRect();
         if (!rect) return;
         const scale = Math.min(
-          MAX_SCALE,
-          Math.max(MIN_SCALE, pinch.scale * (Math.hypot(first.x - second.x, first.y - second.y) / pinch.distance))
+          maxScale,
+          Math.max(minScale, pinch.scale * (Math.hypot(first.x - second.x, first.y - second.y) / pinch.distance))
         );
         const centerX = (first.x + second.x) / 2 - rect.left - rect.width / 2;
         const centerY = (first.y + second.y) / 2 - rect.top - rect.height / 2;
@@ -252,7 +287,7 @@ export const MapView: React.FC<MapViewProps> = ({ isActive = true, onSelectStree
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
     };
-  }, [isDragging, clamp]);
+  }, [isDragging, clamp, maxScale, minScale]);
 
   const handleZoneClick = (title: string, desc: string, streetId: string) => {
     if (dragRef.current.moved) return;
@@ -499,21 +534,18 @@ export const MapView: React.FC<MapViewProps> = ({ isActive = true, onSelectStree
               </button>
             </div>
           ) : (
-            <div className="flex flex-col items-center">
-              <span
-                aria-hidden="true"
-                className="h-12 w-12 animate-spin rounded-full border-4 border-white/20 border-t-emerald-400"
-              />
-              <p className="mt-5 text-sm font-semibold tracking-wide text-white">Loading aerial map...</p>
-              <p className="mt-2 text-xs text-zinc-400">Preparing the interactive map</p>
+            <div
+              className="h-2 w-56 overflow-hidden rounded-full bg-white/10"
+              role="progressbar"
+              aria-label="Loading aerial map"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={mapLoadProgress}
+            >
               <div
-                className="mt-5 h-2 w-56 overflow-hidden rounded-full bg-white/10"
-                role="progressbar"
-                aria-label="Loading aerial map"
-                aria-valuetext="Loading aerial map"
-              >
-                <div className="loading-progress-indicator h-full w-1/3 rounded-full bg-emerald-400" />
-              </div>
+                className="h-full rounded-full bg-emerald-400 transition-[width] duration-75"
+                style={{ width: `${mapLoadProgress}%` }}
+              />
             </div>
           )}
         </div>
@@ -568,7 +600,7 @@ export const MapView: React.FC<MapViewProps> = ({ isActive = true, onSelectStree
         <div className="pointer-events-auto absolute bottom-6 right-4 md:right-6 flex flex-col items-center bg-zinc-900/90 border border-zinc-800 p-1.5 rounded-xl shadow-xl backdrop-blur-md space-y-1.5">
           <button
             onClick={handleZoomIn}
-            disabled={view.scale >= MAX_SCALE}
+            disabled={view.scale >= maxScale}
             aria-label="Zoom in"
             className="flex min-h-11 min-w-11 items-center justify-center rounded-lg bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed text-zinc-200 transition-colors cursor-pointer"
             title="Zoom In"
@@ -578,7 +610,7 @@ export const MapView: React.FC<MapViewProps> = ({ isActive = true, onSelectStree
           <span className="text-[10px] font-mono text-zinc-400">{Math.round(view.scale * 100)}%</span>
           <button
             onClick={handleZoomOut}
-            disabled={view.scale <= MIN_SCALE}
+            disabled={view.scale <= minScale}
             aria-label="Zoom out"
             className="flex min-h-11 min-w-11 items-center justify-center rounded-lg bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed text-zinc-200 transition-colors cursor-pointer"
             title="Zoom Out"

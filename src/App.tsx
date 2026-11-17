@@ -34,7 +34,7 @@ export default function App() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0, y: -20 }}
             transition={{ duration: 0.3 }}
-            className="relative z-10 min-h-screen flex flex-col justify-center items-center px-4 pt-20 text-center"
+            className="relative z-10 h-[100dvh] overflow-y-auto overscroll-contain flex flex-col justify-start sm:justify-center items-center px-4 pt-20 sm:pt-20 pb-8 text-center"
           >
             <motion.div 
               initial={{ opacity: 0, y: 20 }}
@@ -42,37 +42,43 @@ export default function App() {
               transition={{ duration: 0.8 }}
               className="max-w-4xl"
             >
-              <div className="inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-mono mb-8 backdrop-blur-md">
+              <div className="inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-mono mb-4 sm:mb-8 backdrop-blur-md">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                 <span>REAL ESTATE PROTOTYPE</span>
               </div>
               
-              <h1 className="text-4xl md:text-6xl font-black tracking-tight mb-6 text-white leading-tight drop-shadow-lg">
+              <h1 className="text-3xl sm:text-4xl md:text-6xl font-black tracking-tight mb-3 sm:mb-6 text-white leading-tight drop-shadow-lg">
                 Explore KEC Development <br />
                 <span className="text-emerald-400 font-serif italic">in Immersive 360° VR</span>
               </h1>
               
-              <p className="text-zinc-300 text-base md:text-lg mb-10 max-w-2xl mx-auto leading-relaxed font-light drop-shadow">
+              <p className="text-sm sm:text-base md:text-lg text-zinc-300 mb-4 sm:mb-10 max-w-2xl mx-auto leading-relaxed font-light drop-shadow">
                 Navigate interactive aerial masterplans, inspect sector boundaries, and walkthrough high-definition interior spaces.
               </p>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-10 text-left">
-                <div className="p-5 rounded-2xl bg-white/5 backdrop-blur-md border border-white/10 hover:border-emerald-500/40 transition-all">
-                  <Layers className="w-5 h-5 text-emerald-400 mb-3" />
-                  <h3 className="font-semibold text-sm text-zinc-100">Interactive Map</h3>
-                  <p className="text-xs text-zinc-300 mt-1.5 leading-normal">Hover over green zones to inspect development sectors.</p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2 sm:gap-5 mb-4 sm:mb-10 text-left">
+                <div className="p-3 sm:p-5 rounded-2xl bg-white/5 backdrop-blur-md border border-white/10 hover:border-emerald-500/40 transition-all">
+                  <div className="flex items-center gap-3 sm:block">
+                    <Layers className="w-5 h-5 shrink-0 text-emerald-400 sm:mb-3" />
+                    <h3 className="font-semibold text-sm text-zinc-100">Interactive Map</h3>
+                  </div>
+                  <p className="hidden sm:block text-xs text-zinc-300 mt-1.5 leading-normal">Hover over green zones to inspect development sectors.</p>
                 </div>
 
-                <div className="p-5 rounded-2xl bg-white/5 backdrop-blur-md border border-white/10 hover:border-emerald-500/40 transition-all">
-                  <MapPin className="w-5 h-5 text-emerald-400 mb-3" />
-                  <h3 className="font-semibold text-sm text-zinc-100">Street Markers</h3>
-                  <p className="text-xs text-zinc-300 mt-1.5 leading-normal">Jump directly into designated street panorama views.</p>
+                <div className="p-3 sm:p-5 rounded-2xl bg-white/5 backdrop-blur-md border border-white/10 hover:border-emerald-500/40 transition-all">
+                  <div className="flex items-center gap-3 sm:block">
+                    <MapPin className="w-5 h-5 shrink-0 text-emerald-400 sm:mb-3" />
+                    <h3 className="font-semibold text-sm text-zinc-100">Street Markers</h3>
+                  </div>
+                  <p className="hidden sm:block text-xs text-zinc-300 mt-1.5 leading-normal">Jump directly into designated street panorama views.</p>
                 </div>
 
-                <div className="p-5 rounded-2xl bg-white/5 backdrop-blur-md border border-white/10 hover:border-emerald-500/40 transition-all">
-                  <Eye className="w-5 h-5 text-emerald-400 mb-3" />
-                  <h3 className="font-semibold text-sm text-zinc-100">360° Interiors</h3>
-                  <p className="text-xs text-zinc-300 mt-1.5 leading-normal">Walkthrough Foyer, Living Room, Kitchen & Dining areas.</p>
+                <div className="p-3 sm:p-5 rounded-2xl bg-white/5 backdrop-blur-md border border-white/10 hover:border-emerald-500/40 transition-all">
+                  <div className="flex items-center gap-3 sm:block">
+                    <Eye className="w-5 h-5 shrink-0 text-emerald-400 sm:mb-3" />
+                    <h3 className="font-semibold text-sm text-zinc-100">360° Interiors</h3>
+                  </div>
+                  <p className="hidden sm:block text-xs text-zinc-300 mt-1.5 leading-normal">Walkthrough Foyer, Living Room, Kitchen & Dining areas.</p>
                 </div>
               </div>
 
@@ -80,7 +86,7 @@ export default function App() {
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 onClick={() => setCurrentView('map')}
-                className="inline-flex items-center space-x-3 px-8 py-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 font-bold text-zinc-950 shadow-xl shadow-emerald-950/50 transition-all duration-200 cursor-pointer"
+                className="inline-flex w-full max-w-full sm:w-auto items-center justify-center space-x-2 sm:space-x-3 px-5 sm:px-8 py-3 sm:py-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 font-bold text-zinc-950 shadow-xl shadow-emerald-950/50 transition-all duration-200 cursor-pointer"
               >
                 <span>Start Exploring Prototype</span>
                 <ArrowRight className="w-5 h-5" />

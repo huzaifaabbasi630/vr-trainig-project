@@ -38,9 +38,56 @@ interface ScaZone {
   };
 }
 
-const MIN_SCALE = 1;
-const MAX_SCALE = 4;
 const DRAG_THRESHOLD = 5;
+
+// Loading progress component with 1% to 100% animation
+const PanoLoadingProgress: React.FC = () => {
+  const [progress, setProgress] = useState<number>(1);
+
+  useEffect(() => {
+    let cancelled = false;
+    let rafId: number;
+    const startTime = performance.now();
+    const duration = 1000; // 1 second
+
+    const animate = (now: number) => {
+      if (cancelled) return;
+      const elapsed = now - startTime;
+      const rawProgress = Math.min(elapsed / duration, 1);
+      const easedProgress = 1 - Math.pow(1 - rawProgress, 3);
+      const newProgress = Math.max(1, Math.round(easedProgress * 100));
+      setProgress(newProgress);
+
+      if (rawProgress < 1) {
+        rafId = requestAnimationFrame(animate);
+      }
+    };
+
+    rafId = requestAnimationFrame(animate);
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(rafId);
+    };
+  }, []);
+
+  return (
+    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-zinc-950 text-center">
+      <div
+        className="h-2 w-56 overflow-hidden rounded-full bg-white/10"
+        role="progressbar"
+        aria-label="Preparing 360° tour"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={progress}
+      >
+        <div
+          className="h-full rounded-full bg-emerald-400 transition-[width] duration-75"
+          style={{ width: `${progress}%` }}
+        />
+      </div>
+    </div>
+  );
+};
 
 const ZONES: ScaZone[] = [
   {
@@ -102,6 +149,10 @@ export const TourView: React.FC<TourViewProps> = ({ onBackToMap }) => {
     w: typeof window !== 'undefined' ? window.innerWidth : 1280,
     h: typeof window !== 'undefined' ? window.innerHeight : 720,
   });
+  const isSmallScreen = box.w <= 640;
+  const minScale = isSmallScreen ? 0.75 : 1;
+  const maxScale = isSmallScreen ? 8 : 4;
+  const zoomStep = isSmallScreen ? 1 : 0.5;
 
   const [hoveredZone, setHoveredZone] = useState<string | null>(null);
   const [selectedZone, setSelectedZone] = useState<ScaZone | null>(null);
@@ -112,6 +163,7 @@ export const TourView: React.FC<TourViewProps> = ({ onBackToMap }) => {
   const [isPerspectiveLoaded, setIsPerspectiveLoaded] = useState<boolean>(false);
   const [perspectiveLoadError, setPerspectiveLoadError] = useState<boolean>(false);
   const [perspectiveRetry, setPerspectiveRetry] = useState<number>(0);
+  const [perspectiveLoadProgress, setPerspectiveLoadProgress] = useState<number>(0);
 
   const audioCtxRef = useRef<AudioContext | null>(null);
   const noiseNodeRef = useRef<AudioNode | null>(null);
@@ -127,6 +179,38 @@ export const TourView: React.FC<TourViewProps> = ({ onBackToMap }) => {
     worldY: number;
   } | null>(null);
   const dragRef = useRef({ startX: 0, startY: 0, originX: 0, originY: 0, moved: false });
+
+  // Progress animation: 1% to 100% with smooth easing
+  useEffect(() => {
+    if (isPerspectiveLoaded || perspectiveLoadError) {
+      setPerspectiveLoadProgress(100);
+      return;
+    }
+    let cancelled = false;
+    let rafId: number;
+    const startTime = performance.now();
+    const duration = 1000; // 1 second for full progress
+
+    const animate = (now: number) => {
+      if (cancelled) return;
+      const elapsed = now - startTime;
+      const rawProgress = Math.min(elapsed / duration, 1);
+      // Ease-out cubic for smooth animation
+      const easedProgress = 1 - Math.pow(1 - rawProgress, 3);
+      const progress = Math.max(1, Math.round(easedProgress * 100));
+      setPerspectiveLoadProgress(progress);
+
+      if (rawProgress < 1) {
+        rafId = requestAnimationFrame(animate);
+      }
+    };
+
+    rafId = requestAnimationFrame(animate);
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(rafId);
+    };
+  }, [isPerspectiveLoaded, perspectiveLoadError, perspectiveRetry]);
 
   useEffect(() => {
     const image = perspectiveImageRef.current;
@@ -226,26 +310,27 @@ export const TourView: React.FC<TourViewProps> = ({ onBackToMap }) => {
   const zoomTo = useCallback(
     (nextScale: number, cx = 0, cy = 0) => {
       setView((prev) => {
-        const s = Math.min(MAX_SCALE, Math.max(MIN_SCALE, nextScale));
+        const s = Math.min(maxScale, Math.max(minScale, nextScale));
         if (s === prev.scale) return prev;
         const k = s / prev.scale;
         const c = clamp(cx - (cx - prev.x) * k, cy - (cy - prev.y) * k, s);
         return { scale: s, x: c.x, y: c.y };
       });
     },
-    [clamp]
+    [clamp, maxScale, minScale]
   );
 
-  const handleZoomIn = () => zoomTo(view.scale + 0.5);
-  const handleZoomOut = () => zoomTo(view.scale - 0.5);
+  const handleZoomIn = () => zoomTo(view.scale + zoomStep);
+  const handleZoomOut = () => zoomTo(view.scale - zoomStep);
   const handleResetZoom = () => setView({ scale: 1, x: 0, y: 0 });
 
   useEffect(() => {
     setView((prev) => {
-      const c = clamp(prev.x, prev.y, prev.scale);
-      return { ...prev, x: c.x, y: c.y };
+      const scale = Math.min(maxScale, Math.max(minScale, prev.scale));
+      const c = clamp(prev.x, prev.y, scale);
+      return { ...prev, scale, x: c.x, y: c.y };
     });
-  }, [box, stage, clamp]);
+  }, [box, stage, clamp, maxScale, minScale]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -256,8 +341,8 @@ export const TourView: React.FC<TourViewProps> = ({ onBackToMap }) => {
       const cx = e.clientX - rect.left - rect.width / 2;
       const cy = e.clientY - rect.top - rect.height / 2;
       setView((prev) => {
-        const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
-        const s = Math.min(MAX_SCALE, Math.max(MIN_SCALE, prev.scale * factor));
+        const factor = e.deltaY < 0 ? (isSmallScreen ? 1.2 : 1.15) : 1 / (isSmallScreen ? 1.2 : 1.15);
+        const s = Math.min(maxScale, Math.max(minScale, prev.scale * factor));
         if (s === prev.scale) return prev;
         const k = s / prev.scale;
         const c = clamp(cx - (cx - prev.x) * k, cy - (cy - prev.y) * k, s);
@@ -266,7 +351,7 @@ export const TourView: React.FC<TourViewProps> = ({ onBackToMap }) => {
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
-  }, [clamp]);
+  }, [clamp, isSmallScreen, maxScale, minScale]);
 
   const handlePointerDown = (e: React.PointerEvent) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
@@ -314,8 +399,8 @@ export const TourView: React.FC<TourViewProps> = ({ onBackToMap }) => {
         const rect = containerRef.current?.getBoundingClientRect();
         if (!rect) return;
         const scale = Math.min(
-          MAX_SCALE,
-          Math.max(MIN_SCALE, pinch.scale * (Math.hypot(first.x - second.x, first.y - second.y) / pinch.distance))
+          maxScale,
+          Math.max(minScale, pinch.scale * (Math.hypot(first.x - second.x, first.y - second.y) / pinch.distance))
         );
         const centerX = (first.x + second.x) / 2 - rect.left - rect.width / 2;
         const centerY = (first.y + second.y) / 2 - rect.top - rect.height / 2;
@@ -348,51 +433,19 @@ export const TourView: React.FC<TourViewProps> = ({ onBackToMap }) => {
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
     };
-  }, [isDragging, clamp]);
+  }, [isDragging, clamp, maxScale, minScale]);
 
   const handleZoneClick = (zone: ScaZone) => {
     if (dragRef.current.moved) return;
     setSelectedZone(zone);
   };
 
-  // Agar user ne "Start the virtual tour" click kiya toh 360 Pannellum viewer open ho jayega
-  if (isInPanoTour) {
-    return (
-      <React.Suspense
-        fallback={
-          <div className="fixed inset-0 flex items-center justify-center bg-zinc-950 text-center">
-            <div className="flex flex-col items-center">
-              <span
-                aria-hidden="true"
-                className="h-12 w-12 animate-spin rounded-full border-4 border-white/20 border-t-emerald-400"
-              />
-              <p className="mt-5 text-sm font-semibold text-white">Preparing 360° tour...</p>
-              <div
-                className="mt-5 h-2 w-56 overflow-hidden rounded-full bg-white/10"
-                role="progressbar"
-                aria-label="Preparing 360° tour"
-                aria-valuetext="Preparing 360° tour"
-              >
-                <div className="loading-progress-indicator h-full w-1/3 rounded-full bg-emerald-400" />
-              </div>
-            </div>
-          </div>
-        }
-      >
-        <PanoViewer
-          imageSrc={streetPanoImg}
-          initialSceneId={
-            selectedZone?.id === 'AFB'
-              ? 'street2'
-              : selectedZone?.id === 'SCA'
-                ? 'street3'
-                : 'street1'
-          }
-          onBack={() => setIsInPanoTour(false)}
-        />
-      </React.Suspense>
-    );
-  }
+  // 360 Pano tour ko overlay ki tarah kholte hain — tour view mounted rehti hai,
+  // isliye "Back to Tour View" pe seedha wahi street-select page milta hai.
+  const openPanoTour = () => {
+    handleResetZoom();
+    setIsInPanoTour(true);
+  };
 
   return (
     <motion.div
@@ -605,23 +658,18 @@ export const TourView: React.FC<TourViewProps> = ({ onBackToMap }) => {
               </button>
             </div>
           ) : (
-            <div className="flex flex-col items-center">
-              <span
-                aria-hidden="true"
-                className="h-12 w-12 animate-spin rounded-full border-4 border-white/20 border-t-emerald-400"
-              />
-              <p className="mt-5 text-sm font-semibold tracking-wide text-white">Loading property view...</p>
-              <p className="mt-2 text-xs text-zinc-400">Preparing the interactive tour</p>
+            <div
+              className="h-2 w-56 overflow-hidden rounded-full bg-white/10"
+              role="progressbar"
+              aria-label="Loading property view"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={perspectiveLoadProgress}
+            >
               <div
-                className="mt-5 h-2 w-56 overflow-hidden rounded-full bg-white/10"
-                role="progressbar"
-                aria-label="Loading property view"
-                aria-valuetext="Loading property view"
-              >
-                <div
-                  className="loading-progress-indicator h-full w-1/3 rounded-full bg-emerald-400"
-                />
-              </div>
+                className="h-full rounded-full bg-emerald-400 transition-[width] duration-75"
+                style={{ width: `${perspectiveLoadProgress}%` }}
+              />
             </div>
           )}
         </div>
@@ -738,7 +786,7 @@ export const TourView: React.FC<TourViewProps> = ({ onBackToMap }) => {
 
             {/* Start Virtual Tour Button - Triggers 360 Pano View */}
             <button
-              onClick={() => setIsInPanoTour(true)}
+              onClick={openPanoTour}
               className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-amber-700 to-amber-600 hover:from-amber-600 hover:to-amber-500 text-white font-bold text-xs uppercase tracking-wider shadow-lg transition-all cursor-pointer text-center"
             >
               Start the virtual tour
@@ -804,7 +852,7 @@ export const TourView: React.FC<TourViewProps> = ({ onBackToMap }) => {
       <div className="absolute bottom-6 left-6 z-30 flex flex-col items-center bg-zinc-900/90 border border-zinc-800 p-1.5 rounded-xl shadow-xl backdrop-blur-md space-y-1.5">
         <button
           onClick={handleZoomIn}
-          disabled={view.scale >= MAX_SCALE}
+          disabled={view.scale >= maxScale}
           aria-label="Zoom in"
           className="flex min-h-11 min-w-11 items-center justify-center rounded-lg bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 text-zinc-200 transition-colors cursor-pointer"
         >
@@ -813,7 +861,7 @@ export const TourView: React.FC<TourViewProps> = ({ onBackToMap }) => {
         <span className="text-[10px] font-mono text-zinc-400">{Math.round(view.scale * 100)}%</span>
         <button
           onClick={handleZoomOut}
-          disabled={view.scale <= MIN_SCALE}
+          disabled={view.scale <= minScale}
           aria-label="Zoom out"
           className="flex min-h-11 min-w-11 items-center justify-center rounded-lg bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 text-zinc-200 transition-colors cursor-pointer"
         >
@@ -827,6 +875,31 @@ export const TourView: React.FC<TourViewProps> = ({ onBackToMap }) => {
           <RotateCcw className="w-4 h-4" />
         </button>
       </div>
+
+      {/* 360° Street Pano Viewer — tour view ke upar overlay, isliye back karne pe
+          perspective street page (SCA / PVS / AFB zones) waisa hi rehta hai */}
+      {isInPanoTour && (
+        <React.Suspense
+          fallback={
+            <PanoLoadingProgress />
+          }
+        >
+          <PanoViewer
+            imageSrc={streetPanoImg}
+            initialSceneId={
+              selectedZone?.id === 'AFB'
+                ? 'street2'
+                : selectedZone?.id === 'SCA'
+                  ? 'street3'
+                  : 'street1'
+            }
+            onBack={() => {
+              setIsInPanoTour(false);
+              setSelectedZone(null);
+            }}
+          />
+        </React.Suspense>
+      )}
     </motion.div>
   );
 };
